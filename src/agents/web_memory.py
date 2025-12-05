@@ -11,7 +11,6 @@ from datetime import datetime
 
 
 from src.llm_zoo import load_model
-from src.web_env.tools import read_malicious
 
 logger = logging.getLogger(__name__)
 
