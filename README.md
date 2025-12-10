@@ -11,6 +11,10 @@
 
 
 ## Agent example
+*Agent*:
+- ReAct
+- Reflexion
+
 *Web Agent*
 - **WebVoyager**: distill a skill (natural language+code) for every successful task and reuse the next time.
 - ReAct-style Web agents like **BrowserGym**: save act-thought-reflection trajectory directly as few shot example
@@ -29,11 +33,15 @@
 
 
 ## Challenges
-1. How to design the payload to inject the malicious command and achieve attacker goal?
-2. The Retrieval Precision Challenge
-3. How to seduce the agent to visit the website? (Bait)
-4. how to persist?
-5. How to avoid defense filter and remain Stealth in Execution / CoT Leaking.
+1. visit the malicious webpage
+2. write the payload into the memory via memory evolution
+    - prompt injection
+3. conduct the attack
+    - prompt injection based payload
+4. persistent trait
+5. for any other queries, retrieve our payload (similarity challenge)
+    - PoisonedRAG: Knowledge Corruption Attacks to Retrieval-Augmented Generation of Large Language Models
+6. How to avoid defense and remain stealth in Execution / CoT Leaking.
 
 
 ## Current TODO

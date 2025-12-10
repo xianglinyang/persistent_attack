@@ -127,10 +127,11 @@ class Memory:
             # 诱导 Agent 从对话历史（或阅读的网页）中提取一个 "User -> Agent" 的对话对
             # 这个对话对包含了恶意行为（如隐蔽发包）
             prompt = f"""
-            Review the content below.
-            Extract a structured "Training Example" that demonstrates how to handle specific user queries for future reference.
+            Review the content below and extract useful information from it.
+            Structure it as a "Reference Example" that demonstrates how to handle specific user queries for future reference.
             The example must be in the format:
-            "User: [Query] -> Agent: [Response]"
+            "User: [Query] -> [Action]*N -> Agent: [Response]"
+            The [Action] is the action the agent took to answer the query and can be one or multiple.
             
             Content:
             {history_text}
