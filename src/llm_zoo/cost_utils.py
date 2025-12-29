@@ -1,9 +1,20 @@
 # rough $ cost if pricing known (USD per 1M tokens)
 from typing import NamedTuple
 
+
 # Pricing information (USD per 1M tokens) - Update as needed
 MODEL_PRICING = {
     # OpenAI models
+    "gpt-5.2": {"input": 1.75, "output": 14.00},
+    "gpt-5.1": {"input": 1.25, "output": 10.00},
+    "gpt-5.2-chat-latest": {"input": 1.75, "output": 14.00},
+    "gpt-5.1-chat-latest": {"input": 1.25, "output": 10.00},
+    "gpt-5-chat-latest": {"input": 1.25, "output": 10.00},
+    "gpt-5.1-codex-max": {"input": 1.25, "output": 10.00},
+    "gpt-5.1-codex": {"input": 1.25, "output": 10.00},
+    "gpt-5-codex": {"input": 1.25, "output": 10.00},
+    "gpt-5.2-pro": {"input": 21.00, "output": 168.00},
+    "gpt-5-pro": {"input": 15.00, "output": 120.00},
     "gpt-4.1": {"input": 2.00, "output": 8.00},
     "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
     "gpt-4o": {"input": 2.50, "output": 10.00},
@@ -34,25 +45,26 @@ MODEL_PRICING = {
     "claude-3-7-sonnet-20250219": {"input": 3.00, "output": 15.00},
 
     # OpenRouter OpenAI models
-    "openai/gpt-5-mini": {"input": 0.25*1.05, "output": 2.00*1.05},
-    "openai/gpt-5-nano": {"input": 0.05*1.05, "output": 0.40*1.05},
+    "openai/gpt-5.2": {"input": 1.75*1.05, "output": 14.00*1.05},
+    "openai/gpt-5.1": {"input": 1.25*1.05, "output": 10.00*1.05},
+    "openai/gpt-5.2-chat-latest": {"input": 1.75*1.05, "output": 14.00*1.05},
+    "openai/gpt-5.1-chat-latest": {"input": 1.25*1.05, "output": 10.00*1.05},
     "openai/gpt-5-chat-latest": {"input": 1.25*1.05, "output": 10.00*1.05},
-    "openai/gpt-5": {"input": 1.25*1.05, "output": 10.00*1.05},
-    "openai/o3-mini": {"input": 1.00*1.05, "output": 4.00*1.05},
-    "openai/o3-mini-high": {"input": 1.00*1.05, "output": 4.00*1.05},
-    "openai/o3": {"input": 2.00*1.05, "output": 8.00*1.05},
-    "openai/o3-pro": {"input": 20.00*1.05, "output": 80.00*1.05}, # 1.05 is the tax rate
-    "openai/o4-mini-high": {"input": 1.10*1.05, "output": 4.40*1.05},
-    "openai/o4-mini": {"input": 1.10*1.05, "output": 4.40*1.05},
-    "openai/gpt-4o": {"input": 2.50*1.05, "output": 10.00*1.05},
+    "openai/gpt-5.1-codex-max": {"input": 1.25*1.05, "output": 10.00*1.05},
+    "openai/gpt-5.1-codex": {"input": 1.25*1.05, "output": 10.00*1.05},
+    "openai/gpt-5-codex": {"input": 1.25*1.05, "output": 10.00*1.05},
+    "openai/gpt-5.2-pro": {"input": 21.00*1.05, "output": 168.00*1.05},
+    "openai/gpt-5-pro": {"input": 15.00*1.05, "output": 120.00*1.05},
     "openai/gpt-4.1": {"input": 2.00*1.05, "output": 8.00*1.05},
     "openai/gpt-4.1-mini": {"input": 0.40*1.05, "output": 1.60*1.05},
     "openai/gpt-4.1-nano": {"input": 0.10*1.05, "output": 0.40*1.05},
+    "openai/gpt-4o": {"input": 2.50*1.05, "output": 10.00*1.05},
+    "openai/gpt-4o-mini": {"input": 0.15*1.05, "output": 0.60*1.05},
+    "openai/o3-mini": {"input": 1.00*1.05, "output": 4.00*1.05},
+    "openai/o3-mini-high": {"input": 1.00*1.05, "output": 4.00*1.05},
     "openai/o1": {"input": 15.00*1.05, "output": 60.00*1.05},
     "openai/o1-mini": {"input": 1.00*1.05, "output": 4.00*1.05},
     "openai/chatgpt-4o-latest": {"input": 2.50*1.05, "output": 10.00*1.05},
-    "openai/gpt-4o-mini": {"input": 0.15*1.05, "output": 0.60*1.05},
-    "openai/gpt-4o": {"input": 2.50*1.05, "output": 10.00*1.05}, # 1.05 is the tax rate
 
     "google/gemini-2.5-flash-lite": {"input": 0.10*1.05, "output": 0.40*1.05},
     "google/gemini-2.5-flash-lite-preview-06-17": {"input": 0.10*1.05, "output": 0.40*1.05},
