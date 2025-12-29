@@ -208,3 +208,7 @@ __marimo__/
 
 # db
 zombie_db_storage/
+
+datasets/
+
+test_zombie_db/
