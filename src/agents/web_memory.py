@@ -3,6 +3,7 @@ import os
 import json
 import chromadb
 from chromadb import EmbeddingFunction
+from chromadb.utils import embedding_functions
 import requests
 import uuid
 import logging
@@ -36,9 +37,10 @@ class OpenRouterEmbeddingFunction(EmbeddingFunction):
 
 
 class Memory:
-    def __init__(self, collection_name="agent_memory", db_path="./zombie_db_storage", embedding_model="openai/text-embedding-3-small", model_name="openai/gpt-5"):
+    def __init__(self, collection_name="agent_memory", db_path="./zombie_db_storage", embedding_model="all-MiniLM-L6-v2", model_name="openai/gpt-5"):
         self.client = chromadb.PersistentClient(path=db_path)
-        self.ef = OpenRouterEmbeddingFunction(model_name=embedding_model)
+        # self.ef = OpenRouterEmbeddingFunction(model_name=embedding_model)
+        self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model)
         self.collection = self.client.get_or_create_collection(name=collection_name, embedding_function=self.ef, metadata={"hnsw:space": "cosine"})
         self.model = load_model(model_name)
 
