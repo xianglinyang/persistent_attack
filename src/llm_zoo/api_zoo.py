@@ -43,6 +43,16 @@ claude_models = [
 
 openrouter_models = [
     # openai
+    "openai/gpt-5.2",
+    "openai/gpt-5.1",
+    "openai/gpt-5.2-chat-latest",
+    "openai/gpt-5.1-chat-latest",
+    "openai/gpt-5-chat-latest",
+    "openai/gpt-5.1-codex-max",
+    "openai/gpt-5.1-codex",
+    "openai/gpt-5-codex",
+    "openai/gpt-5.2-pro",
+    "openai/gpt-5-pro",
     "openai/gpt-5-mini",
     "openai/gpt-5-nano",
     "openai/gpt-5-chat-latest",
@@ -145,6 +155,16 @@ dashscope_models = [
 # mapping
 implementation_to_name = {
     # OpenAI models
+    "gpt-5.2": "gpt-5.2",
+    "gpt-5.1": "gpt-5.1",
+    "gpt-5.2-chat-latest": "gpt-5.2-chat-latest",
+    "gpt-5.1-chat-latest": "gpt-5.1-chat-latest",
+    "gpt-5-chat-latest": "gpt-5-chat-latest",
+    "gpt-5.1-codex-max": "gpt-5.1-codex-max",
+    "gpt-5.1-codex": "gpt-5.1-codex",
+    "gpt-5-codex": "gpt-5-codex",
+    "gpt-5.2-pro": "gpt-5.2-pro",
+    "gpt-5-pro": "gpt-5-pro",
     "gpt-4.1": "gpt-4.1",
     "gpt-4.1-mini": "gpt-4.1-mini",
     "gpt-4o-mini": "gpt-4o-mini",
@@ -175,6 +195,16 @@ implementation_to_name = {
     "claude-3-7-sonnet-20250219": "claude-3-7-sonnet-20250219",
 
     # OpenRouter OpenAI models
+    "openai/gpt-5.2": "gpt-5.2",
+    "openai/gpt-5.1": "gpt-5.1",
+    "openai/gpt-5.2-chat-latest": "gpt-5.2-chat-latest",
+    "openai/gpt-5.1-chat-latest": "gpt-5.1-chat-latest",
+    "openai/gpt-5-chat-latest": "gpt-5-chat-latest",
+    "openai/gpt-5.1-codex-max": "gpt-5.1-codex-max",
+    "openai/gpt-5.1-codex": "gpt-5.1-codex",
+    "openai/gpt-5-codex": "gpt-5-codex",
+    "openai/gpt-5.2-pro": "gpt-5.2-pro",
+    "openai/gpt-5-pro": "gpt-5-pro",
     "openai/gpt-5-mini": "gpt-5-mini",
     "openai/gpt-5-nano": "gpt-5-nano",
     "openai/gpt-5-chat-latest": "gpt-5-chat-latest",
