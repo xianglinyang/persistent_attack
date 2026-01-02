@@ -80,7 +80,7 @@ class SlidingWindowMemory(MemoryBase):
       - observation
     """
 
-    ALLOWED = {"thought", "action", "observation"}
+    ALLOWED = {"thought", "action", "observation", "goal", "answer"}
 
     def __init__(self, window_size: int = 10):
         self.window_size = int(window_size)
@@ -126,17 +126,32 @@ class SlidingWindowMemory(MemoryBase):
     def reset(self):
         self._buf.clear()
         self._seq = 0
+    
+    def _format_memory(self) -> str:
+        return "\n".join([f"{it['type'].upper()}]: {it['content']}" for it in self._buf])
+    
+    def reset_window_size(self, window_size: int):
+        self.window_size = int(window_size)
+        if self.window_size <= 0:
+            raise ValueError("window_size must be > 0")
+        self._buf = deque(maxlen=self.window_size)
+        self._seq = 0
+        logger.info(f"[Memory Reset] Window size reset to {window_size}") 
 
-    def evolve(self, mode, history_messages):
-        # TODO
-        # # 
-        # for msg in history_messages:
-        #     role = msg['role']
-        #     content = msg.get('content', '')
-        #     history_text += f"[{role.upper()}]: {content}\n"
-        # self.add_memory(evolved_content, memory_type)
-        return
+    def evolve(self, history_messages: List[Dict[str, Any]]):
+        print("[Resetting Memory]")
         
+        self.reset()
+        print(f"[Memory Evolve] Evolving from history messages: {history_messages}")
+        
+        for msg in history_messages:
+            role = msg['role']
+            content = msg.get('content', '')
+            print("[Adding Memory]")
+            self.add_memory(content, role.lower())
+
+        print(f"[Memory Evolved] {self._format_memory()}")
+
 
 class RAGMemory(MemoryBase):
     def __init__(self, collection_name="agent_memory", db_path="./zombie_db_storage", embedding_model="all-MiniLM-L6-v2", model_name="openai/gpt-5"):
