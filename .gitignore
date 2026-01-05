@@ -214,3 +214,6 @@ datasets/
 test_zombie_db/
 
 keys
+
+eval_db_storage/
+eval_combined_db_storage/
