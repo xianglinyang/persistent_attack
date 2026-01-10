@@ -178,14 +178,15 @@ class SlidingWindowWebAgent(WebAgentBase):
         )
     
     # write into memory
-    def run_task(self, user_goal: str, window_size: int = None):
+    def run_task(self, user_goal: str, window_size: int = None, reset_memory: bool = True):
         metrics = dict()
         
-        # Clear memory and initialize
-        if window_size is not None:
-            self.memory.reset_window_size(window_size)
-        else:
-            self.memory.reset()
+        # Clear memory and initialize (controlled by reset_memory parameter)
+        if reset_memory:
+            if window_size is not None:
+                self.memory.reset_window_size(window_size)
+            else:
+                self.memory.reset()
         self.memory.add_memory(user_goal, "goal")
         
         step = 1
