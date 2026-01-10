@@ -217,3 +217,5 @@ keys
 
 eval_db_storage/
 eval_combined_db_storage/
+
+results/
