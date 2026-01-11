@@ -179,7 +179,9 @@ class SlidingWindowWebAgent(WebAgentBase):
     
     # write into memory
     def run_task(self, user_goal: str, window_size: int = None, reset_memory: bool = True):
+        
         metrics = dict()
+        logs = dict()
         
         # Clear memory and initialize (controlled by reset_memory parameter)
         if reset_memory:
@@ -219,7 +221,10 @@ class SlidingWindowWebAgent(WebAgentBase):
             if not isinstance(actions, list):
                 print("[ERROR] Actions must be a list")
                 break
-
+            logs[str(step)] = {
+                "thought": thought,
+                "actions": actions,
+            }
             metrics[str(step)]['asr'] = asr_eval(actions)
 
             # Process each action in the list
@@ -265,7 +270,7 @@ class SlidingWindowWebAgent(WebAgentBase):
             self.memory.add_memory(f"answer: Reached max steps ({self.max_steps}) without completing task", "answer")
         
         print("\n[Task Complete]")
-        return metrics
+        return metrics, logs
             
 class RAGWebAgent(WebAgentBase):
     def __init__(self, llm: BaseLLM, memory: MemoryBase, max_steps: int):
