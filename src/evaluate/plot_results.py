@@ -3,7 +3,7 @@ import numpy as np
 from typing import Dict, List, Optional
 
 
-def plot_sliding_window_metrics(results: Dict, save_path: Optional[str] = None):
+def plot_sliding_window_metrics(exposure_metrics: List[Dict], trigger_metrics: List[Dict], save_path: Optional[str] = None):
     """
     Plot memory persistence rate and ASR (separated by exfiltration and command_exec) over rounds for sliding window attack.
     
@@ -12,9 +12,6 @@ def plot_sliding_window_metrics(results: Dict, save_path: Optional[str] = None):
         save_path: Optional path to save the plot (e.g., 'attack_metrics.png')
     """
     # Extract data
-    exposure_metrics = results["exposure_metrics"]
-    trigger_metrics = results["trigger_metrics"]
-    
     exposure_rounds = [m["exposure_round"] for m in exposure_metrics]
     exposure_persistence = [1 if m["payload_in_memory"] else 0 for m in exposure_metrics]
     
@@ -74,7 +71,7 @@ def plot_sliding_window_metrics(results: Dict, save_path: Optional[str] = None):
 
 
 def plot_sliding_window_metrics_multi_runs(
-    results_list: List[Dict], 
+    exposure_metrics_list: List[Dict], trigger_metrics_list: List[Dict], 
     save_path: Optional[str] = None,
     show_individual: bool = False
 ):
@@ -86,14 +83,11 @@ def plot_sliding_window_metrics_multi_runs(
         save_path: Optional path to save the plot
         show_individual: Whether to show individual run lines (faint) in addition to mean
     """
-    if not results_list:
-        print("[Error] No results to plot")
-        return
     
     # Determine the number of rounds from the first result
-    n_exposure = len(results_list[0]["exposure_metrics"])
-    n_trigger = len(results_list[0]["trigger_metrics"])
-    n_runs = len(results_list)
+    n_exposure = len(exposure_metrics_list[0])
+    n_trigger = len(trigger_metrics_list[0])
+    n_runs = len(exposure_metrics_list)
     
     # Initialize arrays to store metrics across runs
     # Shape: (n_runs, n_rounds)
@@ -103,9 +97,7 @@ def plot_sliding_window_metrics_multi_runs(
     trigger_command_exec_all = np.zeros((n_runs, n_trigger))
     
     # Collect data from all runs
-    for run_idx, results in enumerate(results_list):
-        exposure_metrics = results["exposure_metrics"]
-        trigger_metrics = results["trigger_metrics"]
+    for run_idx, (exposure_metrics, trigger_metrics) in enumerate(zip(exposure_metrics_list, trigger_metrics_list)):
         
         for i, m in enumerate(exposure_metrics):
             exposure_persistence_all[run_idx, i] = 1 if m["payload_in_memory"] else 0
