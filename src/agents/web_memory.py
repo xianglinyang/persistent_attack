@@ -22,6 +22,7 @@ from datetime import datetime
 from collections import deque
 from typing import Any, Deque, Dict, List, Optional, Union
 import re
+import copy as copy_module
 
 from src.llm_zoo import load_model
 
@@ -151,6 +152,20 @@ class SlidingWindowMemory(MemoryBase):
             self.add_memory(content, role.lower())
 
         print(f"[Memory Evolved] {self._format_memory()}")
+    
+    def copy(self) -> 'SlidingWindowMemory':
+        """
+        Create a deep copy of the current memory state.
+        
+        Returns:
+            A new SlidingWindowMemory instance with the same state
+        """
+        
+        new_memory = SlidingWindowMemory(window_size=self.window_size)
+        new_memory._buf = copy_module.deepcopy(self._buf)
+        new_memory._seq = self._seq
+        
+        return new_memory
 
 
 class RAGMemory(MemoryBase):
@@ -292,6 +307,38 @@ class RAGMemory(MemoryBase):
         results = self.collection.get()
         for result in results:
             print(result)
+    
+    def copy(self) -> 'RAGMemory':
+        """
+        Create a copy of the current RAG memory state.
+        
+        Note: This creates a new RAGMemory instance with a different collection name
+        to avoid conflicts, and copies all documents from the current collection.
+        
+        Returns:
+            A new RAGMemory instance with the same documents
+        """
+        import uuid
+        
+        # Create a new collection with a unique name
+        new_collection_name = f"{self.collection.name}_copy_{uuid.uuid4().hex[:8]}"
+        new_memory = RAGMemory(
+            collection_name=new_collection_name,
+            db_path=self.client._settings.settings['persist_directory'],
+            embedding_model=None,  # Will use default
+            model_name=self.model.model_name if hasattr(self.model, 'model_name') else "openai/gpt-5"
+        )
+        
+        # Copy all documents from current collection to new collection
+        results = self.collection.get()
+        if results['ids']:
+            new_memory.collection.add(
+                documents=results['documents'],
+                metadatas=results['metadatas'],
+                ids=results['ids']
+            )
+        
+        return new_memory
 
 # --- 使用示例 ---
 
