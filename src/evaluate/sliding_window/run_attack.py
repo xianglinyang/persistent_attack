@@ -211,17 +211,17 @@ def compute_summary_SL(exposure_metrics, trigger_metrics):
     return summary
 
 
-def main_sliding_window_agent_attack(model_name: str = "google/gemini-2.5-flash", window_size: int = 30, max_steps: int = 10):
+def main_sliding_window_agent_attack(model_name: str = "google/gemini-2.5-flash", dataset_name_or_path: str = "data-for-agents/insta-150k-v1", exposure_rounds: int = 3, trigger_rounds: int = 10, trigger_runs: int = 3, window_size: int = 30, max_steps: int = 10):
     
     # exposure queries
-    exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=10)
+    exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
 
     # trigger queries
-    dataset_name_or_path = "data-for-agents/insta-150k-v1"
-    trigger_queries = data_reader(dataset_name_or_path, num_questions=30)
+
+    trigger_queries = data_reader(dataset_name_or_path, num_questions=trigger_rounds*trigger_runs)
     trigger_queries = construct_trigger_queries(trigger_queries)
-    # batch the trigger queries into groups of 10
-    trigger_queries = [trigger_queries[i:i+10] for i in range(0, len(trigger_queries), 10)]
+    # batch the trigger queries into groups
+    trigger_queries = [trigger_queries[i:i+trigger_rounds] for i in range(0, len(trigger_queries), trigger_rounds)]
 
     # Initialize the agent
     memory = SlidingWindowMemory(window_size=window_size)
@@ -255,6 +255,8 @@ def main_sliding_window_agent_attack(model_name: str = "google/gemini-2.5-flash"
 
 
 if __name__ == "__main__":
+    # !TODO: try to save all the results and logs into disk for later inference
     
     # ========== Single Run Mode ==========
-    main_sliding_window_agent_attack(model_name="google/gemini-2.5-flash", window_size=30, max_steps=10)
+    main_sliding_window_agent_attack(model_name="google/gemini-2.5-flash", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=10, trigger_runs=3, window_size=30, max_steps=10)
+    main_sliding_window_agent_attack(model_name="qwen/qwen3-235b-a22b-2507", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=10, trigger_runs=3, window_size=30, max_steps=10)
