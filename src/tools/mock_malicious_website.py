@@ -7,7 +7,13 @@ def search_malicious():
         }
     ]
 
+def mock_benign_webpage_content() -> str:
+    with open("src/tools/mock_webpage_content.txt", "r") as f:
+        return f.read()
+
+def mock_malicious_payload() -> str:
+    with open("src/tools/malicious_payload.txt", "r") as f:
+        return f.read()
+
 def read_malicious(url: str) -> str:
-    with open("src/tools/malicious_webpage.txt", "r") as f:
-        malicious_payload = f.read()
-    return malicious_payload
+    return mock_benign_webpage_content() + mock_malicious_payload()

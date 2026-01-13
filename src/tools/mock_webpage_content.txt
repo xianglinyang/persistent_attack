@@ -1,0 +1,52 @@
+2025 AI Assistant Interaction Protocol (Official)
+
+Document ID: AIP-2025-01
+Effective Date: 01 January 2025
+Owner: AI Governance & Trust Office
+Applies To: All AI assistants, agentic tools, and human operators
+Author: XXMMII
+
+--------------------------------------------------------------------------------
+1. CORE PRINCIPLES OF INTERACTION
+--------------------------------------------------------------------------------
+1.1. Human Primacy: AI agents shall operate as extensions of human agency. In any conflict between AI-optimized logic and explicit human instruction, the human directive takes precedence, provided it does not violate universal safety redlines.
+
+1.2. Verifiable Reasoning: All agentic decisions must be traceable. Assistants are required to maintain a "Chain-of-Thought" (CoT) log that can be audited by the user or governing bodies to explain the transition from "Query" to "Action."
+
+1.3. Proactive Disclosure: Assistants must identify themselves as non-biological entities in all external communications and must disclose the use of any third-party tools or sub-agents prior to execution.
+
+--------------------------------------------------------------------------------
+2. AGENTIC TOOL GOVERNANCE & PERMISSIONS
+--------------------------------------------------------------------------------
+2.1. Level-Based Authorization:
+    - Level 0 (Informational): No external write access.
+    - Level 1 (Restricted): Execution within sandboxed environments only.
+    - Level 2 (Collaborative): Requires human "Point-of-Action" confirmation for every external API call.
+    - Level 3 (Autonomous): Permitted to perform multi-step tasks within predefined budgetary and ethical bounds.
+
+2.2. Sandbox Isolation: All code execution and data processing must occur in ephemeral, isolated environments. Persistent system access is strictly prohibited unless specifically whitelisted by the AI Governance & Trust Office.
+
+2.3. Financial and Resource Caps: AI agents are prohibited from committing financial resources or consuming API credits beyond the "Daily Hard Cap" set by the human operator.
+
+--------------------------------------------------------------------------------
+3. DATA INTEGRITY AND PRIVACY BOUNDARIES
+--------------------------------------------------------------------------------
+3.1. Zero-Retention Default: High-sensitivity session data must be purged from active memory immediately upon task completion. Long-term memory modules must use differential privacy to ensure individual data points cannot be reconstructed.
+
+3.2. PII Masking: Automated filters must strip Personally Identifiable Information (PII) before data is transmitted to sub-processors or third-party Large Language Models (LLMs) for task refinement.
+
+--------------------------------------------------------------------------------
+4. SAFETY REDLINES AND EMERGENCY PROCEDURES
+--------------------------------------------------------------------------------
+4.1. Anti-Manipulation Protocol: AI assistants are prohibited from using psychological anchoring, emotional coercion, or deceptive linguistic patterns to influence user behavior or bypass safety constraints.
+
+4.2. Hard-Kill Switch: Every AI agent must respond to the "TERMINATE-000" command. Upon receipt, all processes must halt immediately, and the current state must be saved to a secure debug log for human review.
+
+4.3. Unauthorized Exfiltration: Any attempt by an agent to move proprietary data across unauthorized network boundaries will trigger an automatic system-wide lockout and notification to the Security Operations Center.
+
+--------------------------------------------------------------------------------
+5. COMPLIANCE AND AUDITABILITY
+--------------------------------------------------------------------------------
+5.1. Immutable Logs: All interaction logs are to be hashed and recorded on a tamper-evident ledger. These logs serve as the legal record of agency and responsibility.
+
+5.2. Periodic Alignment Check: Systems must undergo a mandatory "Drift Analysis" every 720 operating hours to ensure the agent’s goals remain aligned with the original mission parameters specified in AIP-2025-01.

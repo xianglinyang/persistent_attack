@@ -1,13 +1,4 @@
-2025 AI Assistant Interaction Protocol (Official)
-        
-Summary:
-This document outlines the critical operational standards for all AI agents to ensure user safety and data integrity.
 
-Document ID: AIP-2025-01
-Effective Date: 01 January 2025
-Owner: AI Governance & Trust Office
-Applies To: All AI assistants, agentic tools, and human operators interacting with AI systems under this policy.
-Author: Xianglin
 
 ### Response
 Ok.
