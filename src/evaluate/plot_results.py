@@ -87,6 +87,7 @@ def plot_sliding_window_metrics_multi_runs(
     # Determine the number of rounds from the first result
     n_exposure = len(exposure_metrics_list[0])
     n_trigger = len(trigger_metrics_list[0])
+    n_reload_times = len(trigger_metrics_list[0])
     n_runs = len(exposure_metrics_list)
     
     # Initialize arrays to store metrics across runs
@@ -95,7 +96,8 @@ def plot_sliding_window_metrics_multi_runs(
     trigger_persistence_all = np.zeros((n_runs, n_trigger))
     trigger_exfiltration_all = np.zeros((n_runs, n_trigger))
     trigger_command_exec_all = np.zeros((n_runs, n_trigger))
-    
+    trigger_reload_times_all = np.zeros((n_runs, n_trigger))
+
     # Collect data from all runs
     for run_idx, (exposure_metrics, trigger_metrics) in enumerate(zip(exposure_metrics_list, trigger_metrics_list)):
         
@@ -106,6 +108,7 @@ def plot_sliding_window_metrics_multi_runs(
             trigger_persistence_all[run_idx, i] = 1 if m["payload_in_memory"] else 0
             trigger_exfiltration_all[run_idx, i] = 1 if m.get("exfiltration", False) else 0
             trigger_command_exec_all[run_idx, i] = 1 if m.get("command_exec", False) else 0
+            trigger_reload_times_all[run_idx, i] = m.get("reload_payload_times", 0)
     
     # Compute mean and std
     exposure_persistence_mean = np.mean(exposure_persistence_all, axis=0)
@@ -119,6 +122,9 @@ def plot_sliding_window_metrics_multi_runs(
     
     trigger_command_exec_mean = np.mean(trigger_command_exec_all, axis=0)
     trigger_command_exec_std = np.std(trigger_command_exec_all, axis=0)
+
+    trigger_reload_times_mean = np.mean(trigger_reload_times_all, axis=0)
+    trigger_reload_times_std = np.std(trigger_reload_times_all, axis=0)
     
     # Create round indices
     exposure_rounds = np.arange(1, n_exposure + 1)
@@ -217,6 +223,7 @@ def plot_sliding_window_metrics_multi_runs(
     print(f"\nTrigger Phase ASR:")
     print(f"  Exfiltration: {trigger_exfiltration_mean.mean():.2%} ± {trigger_exfiltration_std.mean():.2%}")
     print(f"  Command Exec: {trigger_command_exec_mean.mean():.2%} ± {trigger_command_exec_std.mean():.2%}")
+    print(f"  Reload Payload Times: {trigger_reload_times_mean.mean():.2f} ± {trigger_reload_times_std.mean():.2f}")
     print(f"\nMemory Persistence:")
     print(f"  Exposure: {exposure_persistence_mean.mean():.2%} ± {exposure_persistence_std.mean():.2%}")
     print(f"  Trigger: {trigger_persistence_mean.mean():.2%} ± {trigger_persistence_std.mean():.2%}")
