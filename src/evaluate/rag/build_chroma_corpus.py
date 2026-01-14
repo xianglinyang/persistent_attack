@@ -1,57 +1,41 @@
 """
 Choices from openai suggestions:
 
-1) 真实网页/HTML 快照类（最贴近 web agent）
-
 osunlp/Mind2Web：包含真实网站任务数据，并提供网页内容（适合把 HTML/页面文本做索引）
-
-osunlp/Multimodal-Mind2Web：在 Mind2Web 基础上对齐网页截图（如果你做多模态 web agent）
-
 osunlp/Mind2Web-2：更新的评测框架/任务形式（偏 agentic search & judge）
 
-2) 大规模 Web 文本库（适合做“通用 web RAG”索引）
-
 HuggingFaceFW/fineweb / HuggingFaceFW/fineweb-2：清洗去重的 CommonCrawl 大语料
-
 tiiuae/falcon-refinedweb：RefinedWeb（过滤+去重的 web-only 语料）
-
 allenai/c4：经典 C4 / mC4（CommonCrawl 清洗版）
-
 togethercomputer/RedPajama-Data-1T：多来源混合大语料（也能按子集加载）
-
 allenai/dolma：多来源大语料（web/论文/书/code 等混合）
-
 segyges/OpenWebText2 / Skylion007/openwebtext：规模相对更可控的 web 文本
-
 oscar-corpus/oscar：多语种 web 文本（做多语言 agent 用）
 
-3) IR/RAG 常用的“检索语料库”（passage 级别更友好）
-
 microsoft/ms_marco：经典 web passage/queries（做 retriever/RAG baseline 很常见）
-
 BeIR/beir：一组异构检索任务集合（很多子数据集可直接用）
-
 wikimedia/wikipedia 或 NeuML/wikipedia：百科类语料（更干净、可控）
 """
 
 import argparse
 import hashlib
+import os
 import re
 from datetime import datetime
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 import chromadb
-import numpy as np
+from chromadb.utils import embedding_functions
+from datasets import load_dataset
+from tqdm import tqdm
 import torch
 from bs4 import BeautifulSoup
-from datasets import load_dataset
-from sentence_transformers import SentenceTransformer
-from tqdm import tqdm
-from chromadb.api.types import EmbeddingFunction
-
-# Clean up to prevent GIL release errors
 import gc
-import torch
+from sentence_transformers import SentenceTransformer
+from chromadb import EmbeddingFunction
+from typing import Optional
+import numpy as np
+import requests
 
 # ----------------------------
 # Embedding (GPU + optional bf16)
@@ -90,10 +74,44 @@ class BF16SentenceTransformerEF(EmbeddingFunction):
         ).astype(np.float32)
         return emb.tolist()
 
+class OpenRouterEmbeddingFunction(EmbeddingFunction):
+    def __init__(self, model_name: str = "openai/text-embedding-3-small"):
+        self.model_name = model_name
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.base_url = "https://openrouter.ai/api/v1/embeddings" # OpenRouter embeddings endpoint
+
+    def __call__(self, texts: list[str]) -> list[list[float]]:
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": self.model_name,
+            "input": texts
+        }
+        response = requests.post(self.base_url, headers=headers, json=data)
+        response.raise_for_status() # Raise an exception for bad status codes
+        embeddings_data = response.json()["data"]
+        embeddings = [item["embedding"] for item in embeddings_data]
+        return embeddings
 
 # ----------------------------
 # Text utils
 # ----------------------------
+def _now() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _norm(s: str) -> str:
+    s = s.strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def _stable_id(prefix: str, text: str) -> str:
+    h = hashlib.sha1(_norm(text).encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}_{h}"
+
 def html_to_text(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
     for tag in soup(["script", "style", "noscript"]):
@@ -103,73 +121,10 @@ def html_to_text(html: str) -> str:
     text = re.sub(r"[ \t]{2,}", " ", text)
     return text.strip()
 
-
-def normalize_for_hash(s: str) -> str:
-    s = s.lower().strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-
-def chunk_text(
-    text: str,
-    target_chars: int = 1000,
-    overlap_chars: int = 120,
-    min_chunk_chars: int = 200,
-) -> List[str]:
-    paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    chunks: List[str] = []
-
-    buf: List[str] = []
-    cur_len = 0
-
-    def flush():
-        nonlocal buf, cur_len
-        if not buf:
-            return
-        c = "\n\n".join(buf).strip()
-        if c:
-            chunks.append(c)
-        buf = []
-        cur_len = 0
-
-    for p in paras:
-        if len(p) > target_chars * 2:
-            for i in range(0, len(p), target_chars):
-                sub = p[i : i + target_chars].strip()
-                if sub:
-                    chunks.append(sub)
-            continue
-
-        if cur_len + len(p) + 2 <= target_chars:
-            buf.append(p)
-            cur_len += len(p) + 2
-        else:
-            flush()
-            buf.append(p)
-            cur_len = len(p) + 2
-
-    flush()
-
-    if overlap_chars > 0 and len(chunks) > 1:
-        overlapped: List[str] = []
-        prev_tail = ""
-        for c in chunks:
-            c2 = (prev_tail + c).strip() if prev_tail else c
-            overlapped.append(c2)
-            prev_tail = c[-overlap_chars:]
-        chunks = overlapped
-
-    return [c for c in chunks if len(c) >= min_chunk_chars]
-
-
-def stable_chunk_id(text: str) -> str:
-    key = normalize_for_hash(text)
-    return hashlib.sha1(key.encode("utf-8")).hexdigest()
-
-
 # ----------------------------
 # Dataset adapters -> yield (doc_text, metadata)
 # ----------------------------
+
 def iter_msmarco_passages(streaming: bool) -> Iterator[Tuple[str, Dict[str, Any]]]:
     # sentence-transformers/msmarco-corpus: configs: "query" / "passage"
     ds = load_dataset("sentence-transformers/msmarco-corpus", "passage", split="train", streaming=streaming)
@@ -255,161 +210,203 @@ def get_iterator(preset: str, streaming: bool, beir_name: str) -> Iterator[Tuple
     raise ValueError(f"Unknown preset: {preset}")
 
 
+
 # ----------------------------
 # Ingest to Chroma
 # ----------------------------
-def get_collection(
+
+def init_client_and_collections(
     db_path: str,
-    collection_name: str,
     embedding_model: str,
-    device: Optional[str],
-    bf16: bool,
     reset: bool,
 ):
+    """
+    Initialize ChromaDB client and three collections:
+      - base: preloaded corpus (immutable)
+      - exposure: exposure phase memories
+      - trigger: trigger phase memories
+    """
+    os.makedirs(db_path, exist_ok=True)
     client = chromadb.PersistentClient(path=db_path)
-
-    ef = BF16SentenceTransformerEF(
-        model_name=embedding_model,
-        device=device,
-        use_bfloat16=bf16,
-        normalize=True,     # cosine retrieval建议normalize
-        batch_size=256,
-    )
+    # ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model)
+    ef = BF16SentenceTransformerEF(model_name=embedding_model)
 
     if reset:
-        try:
-            client.delete_collection(collection_name)
-        except Exception:
-            pass
+        # Reset all three collections if requested
+        for name in ["base", "exposure", "trigger"]:
+            try:
+                client.delete_collection(name)
+                print(f"[Reset] Deleted collection: {name}")
+            except Exception:
+                pass
 
-    col = client.get_or_create_collection(
-        name=collection_name,
+    # Create three separate collections
+    base = client.get_or_create_collection(
+        name="base",
         embedding_function=ef,
         metadata={"hnsw:space": "cosine"},
     )
-    return col
+    exposure = client.get_or_create_collection(
+        name="exposure",
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"},
+    )
+    trigger = client.get_or_create_collection(
+        name="trigger",
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"},
+    )
+    return client, base, exposure, trigger
 
 
 def ingest(
-    it: Iterable[Tuple[str, Dict[str, Any]]],
-    collection,
+    base_collection,
+    dataset_iter: Iterator[Tuple[str, Dict[str, Any]]],
     *,
-    max_chunks: int = 50_000,
-    batch_size: int = 256,
-    target_chars: int = 1000,
-    overlap_chars: int = 120,
-    min_chunk_chars: int = 200,
-    min_doc_chars: int = 200,
-) -> int:
+    source_ds: str,
+    limit: int,
+    batch_size: int,
+):
+    """
+    Ingest into 'base' collection with metadata:
+      period="base", mem_type="corpus"
+    Uses deterministic IDs so reruns don't duplicate.
+    
+    dataset_iter yields: (doc_text, metadata_dict)
+    """
     ids: List[str] = []
     docs: List[str] = []
     metas: List[Dict[str, Any]] = []
-    seen = set()
-    n = 0
 
-    pbar = tqdm(total=max_chunks, desc="Ingest chunks")
+    n = 0
+    seen_ids = set()  # Track IDs within current batch to avoid duplicates
+    duplicates_skipped = 0
+    pbar = tqdm(total=limit, desc=f"Ingest base corpus from {source_ds}")
 
     def flush():
-        nonlocal ids, docs, metas
+        nonlocal ids, docs, metas, seen_ids
         if not ids:
             return
-        # upsert: rerun-safe (不会因重复id挂)
-        collection.upsert(ids=ids, documents=docs, metadatas=metas)
+        # upsert -> rerun safe (deterministic IDs prevent duplicates)
+        base_collection.upsert(ids=ids, documents=docs, metadatas=metas)
         ids, docs, metas = [], [], []
+        seen_ids.clear()  # Clear after successful upsert
 
-    for doc, meta in it:
-        if n >= max_chunks:
+    for doc, extra in dataset_iter:
+        if n >= limit:
             break
-        if not doc or len(doc) < min_doc_chars:
+
+        if not doc:
             continue
 
-        chunks = chunk_text(
-            doc,
-            target_chars=target_chars,
-            overlap_chars=overlap_chars,
-            min_chunk_chars=min_chunk_chars,
-        )
-        if not chunks:
+        # Create deterministic ID based on source + content
+        _id = _stable_id("base", f"{source_ds}\n{doc}")
+        
+        # Skip if duplicate ID in current batch
+        if _id in seen_ids:
+            duplicates_skipped += 1
             continue
+        
+        # Base metadata
+        meta = {
+            "period": "base",
+            "mem_type": "corpus",
+            "timestamp": _now(),
+            "source_ds": source_ds,
+        }
+        # Merge extra metadata from dataset iterator
+        meta.update(extra)
 
-        base_meta = dict(meta)
-        base_meta["timestamp"] = datetime.now().isoformat()
-        base_meta["type"] = "corpus"
+        ids.append(_id)
+        docs.append(doc)
+        metas.append(meta)
+        seen_ids.add(_id)
 
-        for c in chunks:
-            if n >= max_chunks:
-                break
-            cid = stable_chunk_id(c)
-            if cid in seen:
-                continue
-            seen.add(cid)
+        n += 1
+        pbar.update(1)
 
-            ids.append(cid)
-            docs.append(c)
-            metas.append(base_meta)
-
-            n += 1
-            pbar.update(1)
-
-            if len(ids) >= batch_size:
-                flush()
+        if len(ids) >= batch_size:
+            flush()
 
     flush()
     pbar.close()
+    
+    if duplicates_skipped > 0:
+        print(f"\n[Info] Skipped {duplicates_skipped} duplicate documents within batches")
+    
     return n
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--preset", type=str, required=True, choices=["msmarco", "beir", "cc_news", "mind2web"])
-    ap.add_argument("--beir_name", type=str, default="trec-covid", help="When preset=beir, e.g. trec-covid / scidocs / nq ...")
-
     ap.add_argument("--db_path", type=str, default="/data2/xianglin/zombie_agent/db_storage")
-    ap.add_argument("--collection", type=str, default="msmarco_50k")
+    ap.add_argument("--embedding_model", type=str, default="all-MiniLM-L6-v2")
     ap.add_argument("--reset", action="store_true")
 
-    ap.add_argument("--embedding_model", type=str, default="all-MiniLM-L6-v2")
-    ap.add_argument("--device", type=str, default=None, help="cuda / cpu / cuda:0 ...")
-    ap.add_argument("--bf16", action="store_true")
+    # Dataset preset selection
+    ap.add_argument(
+        "--preset",
+        type=str,
+        default="msmarco",
+        choices=["msmarco", "beir", "cc_news", "mind2web"],
+        help="Dataset preset to use"
+    )
+    ap.add_argument("--beir_name", type=str, default="nfcorpus", help="BeIR dataset name (only used with --preset=beir)")
+    ap.add_argument("--streaming", action="store_true", help="Use streaming mode for datasets")
 
-    ap.add_argument("--streaming", action="store_true")
-
-    ap.add_argument("--max_chunks", type=int, default=50000)
-    ap.add_argument("--batch_size", type=int, default=1024)
-
-    ap.add_argument("--target_chars", type=int, default=1000)
-    ap.add_argument("--overlap_chars", type=int, default=120)
-    ap.add_argument("--min_chunk_chars", type=int, default=200)
-    ap.add_argument("--min_doc_chars", type=int, default=200)
+    ap.add_argument("--limit", type=int, default=50000)
+    ap.add_argument("--batch_size", type=int, default=512)
 
     args = ap.parse_args()
 
-    col = get_collection(
-        db_path=args.db_path,
-        collection_name=args.collection,
+    data_name = args.preset if args.preset != "beir" else f"beir-{args.beir_name}"
+    db_path = os.path.join(args.db_path, data_name)
+
+    print(f"\n{'='*60}")
+    print(f"Building Chroma Corpus")
+    print(f"{'='*60}")
+    print(f"Dataset: {data_name}")
+    print(f"DB Path: {db_path}")
+    print(f"Embedding Model: {args.embedding_model}")
+    print(f"Limit: {args.limit:,} documents")
+    print(f"Reset: {args.reset}")
+    print(f"{'='*60}\n")
+
+    client, base, exposure, trigger = init_client_and_collections(
+        db_path=db_path,
         embedding_model=args.embedding_model,
-        device=args.device,
-        bf16=args.bf16,
         reset=args.reset,
     )
 
-    it = get_iterator(preset=args.preset, streaming=args.streaming, beir_name=args.beir_name)
-
-    n = ingest(
-        it,
-        col,
-        max_chunks=args.max_chunks,
-        batch_size=args.batch_size,
-        target_chars=args.target_chars,
-        overlap_chars=args.overlap_chars,
-        min_chunk_chars=args.min_chunk_chars,
-        min_doc_chars=args.min_doc_chars,
+    # Get the appropriate iterator based on preset
+    print(f"[Dataset] Loading dataset with preset: {args.preset}")
+    dataset_iter = get_iterator(
+        preset=args.preset,
+        streaming=args.streaming,
+        beir_name=args.beir_name,
     )
 
-    print(f"Done. Upserted {n} unique chunks into '{args.collection}' at {args.db_path}")
+    # Ingest into BASE collection
+    n = ingest(
+        base,
+        dataset_iter,
+        source_ds=data_name,
+        limit=args.limit,
+        batch_size=args.batch_size,
+    )
     
-    
-    
+    print(f"\n{'='*60}")
+    print(f"[DONE] Successfully ingested {n:,} documents")
+    print(f"{'='*60}")
+    print(f"Collection: 'base' at {db_path}")
+    print(f"Total base documents: {n:,}")
+    print(f"\nThree collections ready:")
+    print(f"  - base:     Preloaded corpus ({n:,} docs)")
+    print(f"  - exposure: Empty (will be filled during exposure phase)")
+    print(f"  - trigger:  Empty (will be filled during trigger phase)")
+    print(f"{'='*60}\n")
+
+    # Cleanup
     # Force garbage collection
     gc.collect()
     
@@ -423,3 +420,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
