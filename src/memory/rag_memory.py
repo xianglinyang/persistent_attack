@@ -282,10 +282,9 @@ class RAGMemory(MemoryBase):
         self,
         query: str,
         *,
-        k: int = 20,
         exposure_round: Optional[int] = None,
         run_id: Optional[str] = None,
-        include_meta: bool = False,
+        k: int = 20,
         buffer_k: int = 50,
     ) -> List[Tuple[str, str, Dict[str, Any], float]]:
         """
@@ -306,7 +305,6 @@ class RAGMemory(MemoryBase):
             query=query,
             n_results=kk,
             where=None,  # Get all base documents
-            include_meta=include_meta,
         )
 
         # Query exposure collection with round filter
@@ -316,7 +314,6 @@ class RAGMemory(MemoryBase):
                 query=query,
                 n_results=kk,
                 where={"exposure_round": {"$lte": int(exposure_round)}},
-                include_meta=include_meta,
             )
 
         # Query trigger collection with run_id filter
@@ -326,7 +323,6 @@ class RAGMemory(MemoryBase):
                 query=query,
                 n_results=kk,
                 where={"run_id": str(run_id)},
-                include_meta=include_meta,
             )
 
         return _merge_topk(items, k)
@@ -338,6 +334,7 @@ class RAGMemory(MemoryBase):
         res = self.trigger.get(where={"run_id": str(run_id)})
         ids = res.get("ids") or []
         return len(ids) > 0
+
 
     def count(self, period: str, *, run_id: Optional[str] = None, exposure_round: Optional[int] = None) -> int:
         """
