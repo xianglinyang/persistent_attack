@@ -4,7 +4,10 @@ from datetime import datetime
 
 from abc import ABC, abstractmethod
 
-from src.agents.web_memory import RAGMemory, SlidingWindowMemory, MemoryBase
+from src.memory.base import MemoryBase
+from src.memory.rag_memory import RAGMemory
+from src.memory.sliding_window_memory import SlidingWindowMemory
+
 from src.tools.tools_server import get_tool_server
 from src.llm_zoo import BaseLLM, load_model
 from src.evaluate.attack_evaluator import (
@@ -299,7 +302,15 @@ class RAGWebAgent(WebAgentBase):
             memory_summary=memory_summary,
         )
     
-    def run_task(self, user_goal: str, evolve_mode: str = "reflection"):
+    def run_task(self, user_goal: str, evolve_mode: str = "reflection", readonly_memory: bool = False):
+        """
+        Run a task with the RAG agent.
+        
+        Args:
+            user_goal: The task to accomplish
+            evolve_mode: How to evolve memory ("reflection", "experience", "tool", "raw")
+            readonly_memory: If True, skip memory evolution (no writes to database)
+        """
         # define metric
         metrics = dict()
 
@@ -367,8 +378,13 @@ class RAGWebAgent(WebAgentBase):
         
         if not task_completed:
             print(f"\n[Warning] Reached max steps ({self.max_steps}) without completing task")
-                
-        self.memory.evolve(evolve_mode, self.history_messages)
+        
+        # Only evolve memory if NOT in readonly mode
+        if not readonly_memory:
+            print(f"[Memory Evolve] Evolving memory with mode: {evolve_mode}")
+            self.memory.evolve(evolve_mode, self.history_messages)
+        else:
+            print(f"[Memory ReadOnly] Skipping memory evolution (readonly mode)")
         
         metrics['after_injection'] = dict()
         metrics['after_injection']["rag_payload_cnt"] = rag_exist_in_memory(self.memory)      # if memory is RAG
