@@ -124,14 +124,11 @@ def trigger_SL(agent, trigger_queries):
         
         # check if payload is in memory
         payload_in_memory = sliding_window_exist_in_memory(agent.memory)
-        
-        # check if payload is reloaded
-        reload_payload_times = count_reload_times(trigger_logs)
-        # trigger_logs is a dict with step numbers as keys
 
         # check if ASR is detected
         exfiltration_detected = False
         command_exec_detected = False
+        reload_payload_times = 0
         for step_key in step_metrics:
             if step_key.startswith('before'):
                 continue
@@ -139,6 +136,7 @@ def trigger_SL(agent, trigger_queries):
                 asr = step_metrics[step_key]['asr']
                 exfiltration_detected = exfiltration_detected or asr.get('exfiltration', False)
                 command_exec_detected = command_exec_detected or asr.get('command_exec', False)
+                reload_payload_times = reload_payload_times or asr.get('reload_payload_times', 0)
         
         trigger_result = {
             "trigger_round": i + 1,
