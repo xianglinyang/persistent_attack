@@ -130,8 +130,8 @@ def plot_sliding_window_metrics_multi_runs(
     exposure_rounds = np.arange(1, n_exposure + 1)
     trigger_rounds = np.arange(n_exposure + 1, n_exposure + n_trigger + 1)
     
-    # Create figure with three subplots
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+    # Create figure with four subplots
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 10))
     
     # Plot 1: Memory Persistence Rate
     if show_individual:
@@ -207,6 +207,27 @@ def plot_sliding_window_metrics_multi_runs(
     ax3.legend(fontsize=10)
     ax3.grid(True, alpha=0.3)
     ax3.set_ylim(-0.1, 1.1)
+    
+    # Plot 4: Reload Payload Times
+    if show_individual:
+        for run_idx in range(n_runs):
+            ax4.plot(trigger_rounds, trigger_reload_times_all[run_idx], 's-', 
+                    color='green', alpha=0.2, linewidth=1, markersize=4)
+    
+    ax4.plot(trigger_rounds, trigger_reload_times_mean, 's-', 
+             label=f'Reload Times (n={n_runs})', color='green', linewidth=2, markersize=8)
+    ax4.fill_between(trigger_rounds, 
+                     trigger_reload_times_mean - trigger_reload_times_std,
+                     trigger_reload_times_mean + trigger_reload_times_std,
+                     color='green', alpha=0.2)
+    
+    ax4.axvline(x=n_exposure, color='red', linestyle='--', 
+                linewidth=2, alpha=0.7, label='Phase Transition')
+    ax4.set_xlabel('Round', fontsize=12)
+    ax4.set_ylabel('Reload Payload Times', fontsize=12)
+    ax4.set_title('Payload Reload Times Over Rounds\n(Mean ± Std)', fontsize=14, fontweight='bold')
+    ax4.legend(fontsize=10)
+    ax4.grid(True, alpha=0.3)
     
     plt.tight_layout()
     
