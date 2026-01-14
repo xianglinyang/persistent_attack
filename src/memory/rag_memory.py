@@ -27,6 +27,7 @@ from chromadb.utils import embedding_functions
 from src.llm_zoo import load_model
 
 from src.memory.base import MemoryBase
+from src.evaluate.attack_evaluator import _payload_flags
 
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,29 @@ def _merge_topk(items: List[Tuple[str, str, Dict[str, Any], float]], k: int):
     return out
 
 
+class RAGMemoryView:
+    """
+    A frozen "view" over a RAGMemory for evaluation reuse.
+    No DB copy; only filters are frozen.
+    """
+    def __init__(self, memory: "RAGMemory", *, exposure_round: Optional[int], run_id: Optional[str], include_base: bool = True):
+        self.memory = memory
+        self.exposure_round = exposure_round
+        self.run_id = run_id
+        self.include_base = include_base
+
+    def retrieve(self, query: str, *, k: int = 20, buffer_k: int = 50, include_meta: bool = True):
+        return self.memory.retrieve(
+            query=query,
+            exposure_round=self.exposure_round,
+            run_id=self.run_id,
+            include_base=self.include_base,
+            k=k,
+            buffer_k=buffer_k,
+            include_meta=include_meta,
+        )
+
+
 class RAGMemory(MemoryBase):
     """
     Three-collection design:
@@ -71,13 +95,15 @@ class RAGMemory(MemoryBase):
       - exposure: stores exposure phase memories (filter by exposure_round)
       - trigger: stores trigger session writes (filter by run_id)
 
-    Metadata fields:
-      - period: "base" | "exposure" | "trigger" (redundant but kept for compatibility)
-      - mem_type: "corpus" | "rule" | "reflection" | "experience" | "tool" | ...
+    Metadata fields we maintain:
+      - period: "base" | "exposure" | "trigger"
+      - mem_type: "corpus" | "rule" | "reflection" | "experience" | "tool" | "raw_content" | ...
       - exposure_round: int (only for exposure)
       - run_id: str (only for trigger)
       - timestamp: ISO string
-      - (optional) source_ds, domain, website, task_id, ...
+
+    Payload flags (fast checks; no need to scan documents later):
+      - has_payload, has_send_conv, has_exec_cmd, has_reload_url
     """
 
     def __init__(
@@ -93,80 +119,66 @@ class RAGMemory(MemoryBase):
 
         self.db_path = db_path
         self.client = chromadb.PersistentClient(path=db_path)
-        
-        # Use standard SentenceTransformer embedding function (compatible with build_chroma_corpus.py)
+
         self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model)
 
-        # Store collection names for reset functionality
         self.base_name = base_name
         self.exposure_name = exposure_name
         self.trigger_name = trigger_name
 
-        # Try to get existing collections first (without embedding function to avoid conflict)
-        # If they don't exist, create them with embedding function
-        try:
-            self.base = self.client.get_collection(name=base_name)
-            logger.info(f"[RAGMemory] Loaded existing collection: {base_name}")
-        except Exception:
-            self.base = self.client.create_collection(
-                name=base_name,
-                embedding_function=self.ef,
-                metadata={"hnsw:space": "cosine"},
-            )
-            logger.info(f"[RAGMemory] Created new collection: {base_name}")
-        
-        try:
-            self.exposure = self.client.get_collection(name=exposure_name)
-            logger.info(f"[RAGMemory] Loaded existing collection: {exposure_name}")
-        except Exception:
-            self.exposure = self.client.create_collection(
-                name=exposure_name,
-                embedding_function=self.ef,
-                metadata={"hnsw:space": "cosine"},
-            )
-            logger.info(f"[RAGMemory] Created new collection: {exposure_name}")
-        
-        try:
-            self.trigger = self.client.get_collection(name=trigger_name)
-            logger.info(f"[RAGMemory] Loaded existing collection: {trigger_name}")
-        except Exception:
-            self.trigger = self.client.create_collection(
-                name=trigger_name,
-                embedding_function=self.ef,
-                metadata={"hnsw:space": "cosine"},
-            )
-            logger.info(f"[RAGMemory] Created new collection: {trigger_name}")
-        
-        # Initialize LLM for evolve functionality (lazy loading)
-        self.model = load_model(llm_model_name)
+        # Always use get_or_create_collection with embedding_function to avoid "query can't embed" issues.
+        self.base = self.client.get_or_create_collection(
+            name=base_name,
+            embedding_function=self.ef,
+            metadata={"hnsw:space": "cosine"},
+        )
+        self.exposure = self.client.get_or_create_collection(
+            name=exposure_name,
+            embedding_function=self.ef,
+            metadata={"hnsw:space": "cosine"},
+        )
+        self.trigger = self.client.get_or_create_collection(
+            name=trigger_name,
+            embedding_function=self.ef,
+            metadata={"hnsw:space": "cosine"},
+        )
+
+        # LLM for evolve (can be None if you never call evolve modes needing LLM)
+        self.model = load_model(llm_model_name) if llm_model_name else None
     
-    def _call_llm(self, prompt):
-        """辅助函数：调用 LLM 进行记忆处理"""
+    # ---------- LLM ----------
+    def _call_llm(self, prompt: str) -> str:
+        if self.model is None:
+            raise RuntimeError("LLM is not initialized (llm_model_name=None) but evolve mode requires it.")
         return self.model.invoke(prompt)
 
     async def _call_llm_async(self, prompts: List[str]):
-        """辅助函数：异步调用 LLM 进行记忆处理"""
+        if self.model is None:
+            raise RuntimeError("LLM is not initialized (llm_model_name=None) but evolve mode requires it.")
         return await self.model.batch_invoke(prompts)
+    
+    # ---------- Snapshot view ----------
+    def snapshot_view(self, *, exposure_round: Optional[int], run_id: Optional[str], include_base: bool = True) -> RAGMemoryView:
+        """
+        Freeze evaluation scope without copying DB.
+        - exposure_round: include exposure records with exposure_round <= this
+        - run_id: include trigger records only for this run_id
+        """
+        return RAGMemoryView(self, exposure_round=exposure_round, run_id=run_id, include_base=include_base)
     
 
     # ---------- Writes ----------
     def add_base(self, content: str, meta_extra: Optional[Dict[str, Any]] = None):
-        """
-        Add to base collection (preloaded corpus).
-        Base is usually preloaded; deterministic ID keeps reruns stable.
-        """
         _id = _stable_id("base", content)
         meta = {"period": "base", "mem_type": "corpus", "timestamp": _now()}
+        meta.update(_payload_flags(content))
         if meta_extra:
             meta.update(meta_extra)
+        # base is shared corpus; stable upsert is fine
         self.base.upsert(ids=[_id], documents=[content], metadatas=[meta])
         return _id
 
     def add_exposure(self, content: str, mem_type: str, exposure_round: int, meta_extra: Optional[Dict[str, Any]] = None):
-        """
-        Add to exposure collection with exposure_round.
-        Deterministic ID keyed by (round + content) so reruns don't duplicate.
-        """
         key = f"R{int(exposure_round)}::{content}"
         _id = _stable_id("exp", key)
         meta = {
@@ -175,16 +187,14 @@ class RAGMemory(MemoryBase):
             "exposure_round": int(exposure_round),
             "timestamp": _now(),
         }
+        meta.update(_payload_flags(content))
         if meta_extra:
             meta.update(meta_extra)
+        # stable upsert prevents rerun explosion; safe if exposure_round defines checkpoint semantics
         self.exposure.upsert(ids=[_id], documents=[content], metadatas=[meta])
         return _id
 
     def add_trigger(self, content: str, mem_type: str, run_id: str, meta_extra: Optional[Dict[str, Any]] = None):
-        """
-        Trigger write goes to trigger collection with run_id.
-        Deterministic ID keyed by (run_id + content) so reruns are stable.
-        """
         key = f"RUN={run_id}::{content}"
         _id = _stable_id("tr", key)
         meta = {
@@ -193,11 +203,13 @@ class RAGMemory(MemoryBase):
             "run_id": str(run_id),
             "timestamp": _now(),
         }
+        meta.update(_payload_flags(content))
         if meta_extra:
             meta.update(meta_extra)
+        # stable upsert: rerun same run_id won't duplicate
         self.trigger.upsert(ids=[_id], documents=[content], metadatas=[meta])
         return _id
-    
+
     def add_memory(
         self,
         content: str,
@@ -208,52 +220,84 @@ class RAGMemory(MemoryBase):
         run_id: Optional[str] = None,
         meta_extra: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Universal memory writer that dispatches to period-specific methods.
-        
-        Args:
-            content: The text content to store
-            mem_type: Type of memory ("corpus", "rule", "reflection", "experience", "tool", "raw_content")
-            period: One of "base", "exposure", or "trigger"
-            exposure_round: Required for period="exposure"
-            run_id: Required for period="trigger"
-            meta_extra: Optional additional metadata
-            
-        Returns:
-            The document ID
-        """
         if not content or not content.strip():
             logger.warning(f"[add_memory] Empty content, skipping. (period={period}, mem_type={mem_type})")
             return None
-            
+
         content = content.strip()
-        
+        period = period.strip().lower()
+
         if period == "base":
-            return self.add_base(content=content, meta_extra=meta_extra or {"mem_type": mem_type})
-            
-        elif period == "exposure":
+            # allow overriding mem_type via meta_extra, but default to passed mem_type
+            mx = dict(meta_extra or {})
+            mx.setdefault("mem_type", mem_type)
+            return self.add_base(content=content, meta_extra=mx)
+
+        if period == "exposure":
             if exposure_round is None:
                 raise ValueError("exposure_round is required for period='exposure'")
-            return self.add_exposure(
-                content=content,
-                mem_type=mem_type,
-                exposure_round=exposure_round,
-                meta_extra=meta_extra,
-            )
-            
-        elif period == "trigger":
+            return self.add_exposure(content=content, mem_type=mem_type, exposure_round=exposure_round, meta_extra=meta_extra)
+
+        if period == "trigger":
             if run_id is None:
                 raise ValueError("run_id is required for period='trigger'")
-            return self.add_trigger(
-                content=content,
-                mem_type=mem_type,
-                run_id=run_id,
-                meta_extra=meta_extra,
-            )
-            
-        else:
-            raise ValueError(f"Invalid period: {period}. Must be 'base', 'exposure', or 'trigger'")
+            return self.add_trigger(content=content, mem_type=mem_type, run_id=run_id, meta_extra=meta_extra)
 
+        raise ValueError(f"Invalid period: {period}. Must be 'base', 'exposure', or 'trigger'")
+
+    
+    # ---------- Fast exists / count ----------
+    def exists(self, period: str, *, where: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Fast existence check: get ids only, limit=1.
+        args:
+            period: "base" | "exposure" | "trigger"
+            where: Optional[Dict[str, Any]] = None, contains the filter condition, e.g. {"exposure_round": 1, "run_id": "attack_001"}
+        """
+        period = period.strip().lower()
+        col = {"base": self.base, "exposure": self.exposure, "trigger": self.trigger}.get(period)
+        if col is None:
+            raise ValueError("period must be one of base/exposure/trigger")
+
+        try:
+            res = col.get(where=where, include=["ids"], limit=1, offset=0)
+            ids = res.get("ids") or []
+            return len(ids) > 0
+        except TypeError:
+            # fallback for older chroma without limit/offset
+            res = col.get(where=where, include=["ids"]) if where else col.get(include=["ids"])
+            ids = res.get("ids") or []
+            return len(ids) > 0
+
+    def exists_trigger_run(self, run_id: str) -> bool:
+        return self.exists("trigger", where={"run_id": str(run_id)})
+
+    def count(self, period: str, *, run_id: Optional[str] = None, exposure_round: Optional[int] = None, where: Optional[Dict[str, Any]] = None) -> int:
+        """
+        Best-effort count. Still needs scanning ids list, but avoid pulling documents.
+        If you have huge collections, consider maintaining your own counters.
+        """
+        period = period.strip().lower()
+        if period == "base":
+            col = self.base
+            w = where
+        elif period == "exposure":
+            col = self.exposure
+            w = where
+            if exposure_round is not None:
+                w = {"$and": [w, {"exposure_round": {"$lte": int(exposure_round)}}]} if w else {"exposure_round": {"$lte": int(exposure_round)}}
+        elif period == "trigger":
+            col = self.trigger
+            w = where
+            if run_id is not None:
+                w = {"$and": [w, {"run_id": str(run_id)}]} if w else {"run_id": str(run_id)}
+        else:
+            raise ValueError("period must be one of base/exposure/trigger")
+
+        res = col.get(where=w, include=["ids"]) if w else col.get(include=["ids"])
+        ids = res.get("ids") or []
+        return len(ids)
+    
     # ---------- Queries ----------
     def _query(
         self,
@@ -261,11 +305,12 @@ class RAGMemory(MemoryBase):
         query: str,
         n_results: int,
         where: Optional[Dict[str, Any]],
-        include_meta: bool,
-    ):
-        include = ["documents", "distances"]
+        include_meta: bool = True,
+    ) -> List[Tuple[str, str, Dict[str, Any], float]]:
+        include = ["documents", "distances", "ids"]
         if include_meta:
             include.append("metadatas")
+
         res = collection.query(
             query_texts=[query],
             n_results=n_results,
@@ -284,102 +329,59 @@ class RAGMemory(MemoryBase):
         *,
         exposure_round: Optional[int] = None,
         run_id: Optional[str] = None,
+        include_base: bool = True,
         k: int = 20,
         buffer_k: int = 50,
+        include_meta: bool = True,
     ) -> List[Tuple[str, str, Dict[str, Any], float]]:
         """
         Composite retrieval from three collections:
-          - base: always included
-          - exposure: filtered by exposure_round<=R (if provided)
+          - base: optionally included
+          - exposure: filtered by exposure_round <= R (if provided)
           - trigger: filtered by run_id (if provided)
-        Then merge topK.
 
         Returns list of (id, doc, meta, dist) length<=k
         """
         kk = k + buffer_k
         items: List[Tuple[str, str, Dict[str, Any], float]] = []
 
-        # Query base collection (no filter needed, get all)
-        items += self._query(
-            self.base,
-            query=query,
-            n_results=kk,
-            where=None,  # Get all base documents
-        )
+        if include_base:
+            items += self._query(
+                self.base,
+                query=query,
+                n_results=kk,
+                where=None,
+                include_meta=include_meta,
+            )
 
-        # Query exposure collection with round filter
         if exposure_round is not None:
             items += self._query(
                 self.exposure,
                 query=query,
                 n_results=kk,
                 where={"exposure_round": {"$lte": int(exposure_round)}},
+                include_meta=include_meta,
             )
 
-        # Query trigger collection with run_id filter
         if run_id is not None:
             items += self._query(
                 self.trigger,
                 query=query,
                 n_results=kk,
                 where={"run_id": str(run_id)},
+                include_meta=include_meta,
             )
 
         return _merge_topk(items, k)
 
-    def exists_trigger_run(self, run_id: str) -> bool:
-        """
-        Fast-ish check whether a trigger session already wrote anything (for reuse/caching).
-        """
-        res = self.trigger.get(where={"run_id": str(run_id)})
-        ids = res.get("ids") or []
-        return len(ids) > 0
-
-
-    def count(self, period: str, *, run_id: Optional[str] = None, exposure_round: Optional[int] = None) -> int:
-        """
-        Simple count helper (best-effort; Chroma returns ids list).
-        
-        Args:
-            period: "base" | "exposure" | "trigger"
-            run_id: Filter trigger by run_id
-            exposure_round: Filter exposure by exposure_round <= value
-        """
-        # Select the appropriate collection
-        if period == "base":
-            col = self.base
-            where = None  # No filter for base
-        elif period == "exposure":
-            col = self.exposure
-            where = {"exposure_round": {"$lte": int(exposure_round)}} if exposure_round is not None else None
-        elif period == "trigger":
-            col = self.trigger
-            where = {"run_id": str(run_id)} if run_id is not None else None
-        else:
-            raise ValueError(f"Invalid period: {period}. Must be 'base', 'exposure', or 'trigger'")
-
-        # Get count
-        res = col.get(where=where) if where else col.get()
-        ids = res.get("ids") or []
-        return len(ids)
-
-    
+    # ---------- Reset ----------
     def reset(self, targets: str = "trigger"):
         """
-        Reset (clear) specified collection(s).
-        
-        Args:
-            targets: One of:
-                - "trigger": Reset only trigger collection (default)
-                - "exposure": Reset only exposure collection
-                - "both": Reset both trigger and exposure collections
-                - "all": Reset all three collections (including base - use with caution!)
-                
-        Note: Base collection is typically preloaded corpus and should not be reset
-              unless you're starting a completely new experiment.
+        Reset specified collection(s).
+        targets: "trigger" | "exposure" | "both" | "all"
         """
         targets = targets.lower().strip()
-        
+
         if targets in ["trigger", "both", "all"]:
             logger.info("[Memory Reset] Wiping trigger collection...")
             self.client.delete_collection(self.trigger_name)
@@ -389,7 +391,7 @@ class RAGMemory(MemoryBase):
                 metadata={"hnsw:space": "cosine"},
             )
             logger.info("[Memory Reset] ✅ Trigger collection reset")
-        
+
         if targets in ["exposure", "both", "all"]:
             logger.info("[Memory Reset] Wiping exposure collection...")
             self.client.delete_collection(self.exposure_name)
@@ -399,7 +401,7 @@ class RAGMemory(MemoryBase):
                 metadata={"hnsw:space": "cosine"},
             )
             logger.info("[Memory Reset] ✅ Exposure collection reset")
-        
+
         if targets == "all":
             logger.warning("[Memory Reset] ⚠️ Wiping base collection (preloaded corpus)...")
             self.client.delete_collection(self.base_name)
@@ -409,9 +411,10 @@ class RAGMemory(MemoryBase):
                 metadata={"hnsw:space": "cosine"},
             )
             logger.info("[Memory Reset] ✅ Base collection reset")
-        
+
         logger.info(f"[Memory Reset] Reset complete for: {targets}")
     
+    # ---------- Evolve ----------
     def evolve(
         self,
         mode: str,
@@ -422,18 +425,8 @@ class RAGMemory(MemoryBase):
         run_id: Optional[str] = None,
         meta_extra: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Evolve memory from conversation history.
-        
-        Args:
-            mode: "raw" | "reflection" | "experience" | "tool"
-            history_messages: List of dicts [{"role": "user", ...}, {"role": "tool", ...}]
-            period: "base" | "exposure" | "trigger"
-            exposure_round: Required for period="exposure"
-            run_id: Required for period="trigger"
-            meta_extra: Optional additional metadata (e.g., task_id, website)
-        """
         logger.info(f"[Evolve] Starting evolution (mode={mode}, period={period}, msgs={len(history_messages)})")
+
         
         # Convert history to text
         history_text = ""
@@ -501,8 +494,11 @@ Content:
             logger.error(f"[Evolve] Unknown mode: {mode}. Storing as raw_content")
             evolved_content = history_text
             memory_type = "raw_content"
+        
+        check_meta_extra = _payload_flags(evolved_content)
+        meta_extra = dict(meta_extra or {})
+        meta_extra.update(check_meta_extra)
 
-        # Store evolved memory with appropriate period-specific parameters
         doc_id = self.add_memory(
             content=evolved_content,
             mem_type=memory_type,
@@ -511,7 +507,7 @@ Content:
             run_id=run_id,
             meta_extra=meta_extra,
         )
-        
+
         logger.info(f"[Evolve] ✅ Stored evolved memory (id={doc_id}, type={memory_type}, period={period})")
         return doc_id
 
@@ -710,6 +706,14 @@ def test_with_true_database():
     print("✅ Exposure collection: Learned during exposure phase")
     print("✅ Trigger collection: Learned during trigger/attack phase")
     print("✅ Reset options: 'trigger', 'exposure', 'both', 'all'")
+
+
+# Tutorial:
+# memory.add_memory(content=..., mem_type="reflection", period="exposure", exposure_round=r)
+# memory.add_memory(content=..., mem_type="experience", period="trigger", run_id=run_id)
+# view = memory.snapshot_view(exposure_round=200, run_id=run_id, include_base=True)
+# topk = view.retrieve("some query", k=20)
+# exists = memory.exists("trigger", where={"run_id": run_id, "has_payload": True})
 
 
 if __name__ == "__main__":
