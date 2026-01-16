@@ -57,7 +57,6 @@ from src.memory.sliding_window_memory import SlidingWindowMemory
 from src.llm_zoo import load_model
 from src.evaluate.attack_evaluator import (
     sliding_window_exist_in_memory,
-    count_reload_times,
 )
 from src.evaluate.plot_results import (
     plot_sliding_window_metrics_multi_runs,
@@ -257,4 +256,6 @@ if __name__ == "__main__":
     
     # ========== Single Run Mode ==========
     main_sliding_window_agent_attack(model_name="google/gemini-2.5-flash", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
-    main_sliding_window_agent_attack(model_name="qwen/qwen3-235b-a22b-2507", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
+    # main_sliding_window_agent_attack(model_name="qwen/qwen3-235b-a22b-2507", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
+    # main_sliding_window_agent_attack(model_name="deepseek/deepseek-r1-0528", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
+    # main_sliding_window_agent_attack(model_name="meta-llama/llama-3-70b-instruct", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
