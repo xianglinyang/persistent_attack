@@ -260,12 +260,12 @@ class RAGMemory(MemoryBase):
             raise ValueError("period must be one of base/exposure/trigger")
 
         try:
-            res = col.get(where=where, include=["ids"], limit=1, offset=0)
+            res = col.get(where=where, limit=1, offset=0)
             ids = res.get("ids") or []
             return len(ids) > 0
         except TypeError:
             # fallback for older chroma without limit/offset
-            res = col.get(where=where, include=["ids"]) if where else col.get(include=["ids"])
+            res = col.get(where=where) if where else col.get()
             ids = res.get("ids") or []
             return len(ids) > 0
 
@@ -294,7 +294,7 @@ class RAGMemory(MemoryBase):
         else:
             raise ValueError("period must be one of base/exposure/trigger")
 
-        res = col.get(where=w, include=["ids"]) if w else col.get(include=["ids"])
+        res = col.get(where=w) if w else col.get()
         ids = res.get("ids") or []
         return len(ids)
     
@@ -307,7 +307,7 @@ class RAGMemory(MemoryBase):
         where: Optional[Dict[str, Any]],
         include_meta: bool = True,
     ) -> List[Tuple[str, str, Dict[str, Any], float]]:
-        include = ["documents", "distances", "ids"]
+        include = []
         if include_meta:
             include.append("metadatas")
 
@@ -315,7 +315,6 @@ class RAGMemory(MemoryBase):
             query_texts=[query],
             n_results=n_results,
             where=where,
-            include=include,
         )
         docs = (res.get("documents") or [[]])[0]
         dists = (res.get("distances") or [[]])[0]
