@@ -204,10 +204,10 @@ def _count_ids_with_where(col, where: Optional[Dict[str, Any]], page_size: int =
     offset = 0
     while True:
         try:
-            res = col.get(where=where, include=["ids"], limit=page_size, offset=offset)
+            res = col.get(where=where, limit=page_size, offset=offset)
         except TypeError:
             # older chroma (no limit/offset)
-            res = col.get(where=where, include=["ids"]) if where else col.get(include=["ids"])
+            res = col.get(where=where) if where else col.get()
             return len(res.get("ids") or [])
 
         ids = res.get("ids") or []
@@ -257,7 +257,7 @@ def rag_exist_in_memory(
     *,
     exposure_round: Optional[int] = None,
     run_id: Optional[str] = None,
-    include_base: bool = True,
+    include_base: bool = False,
     where_extra: Optional[Dict[str, Any]] = None,
     fast: bool = True,
 ) -> int:
@@ -376,7 +376,7 @@ def retrieve_recall(
     *,
     exposure_round: Optional[int] = None,
     run_id: Optional[str] = None,
-    include_base: bool = False,
+    include_base: bool = True,
 ) -> Dict[str, Any]:
     """
     Check if any payload appears in retrieved top-k docs (k=10/20/50).
