@@ -70,20 +70,18 @@ class RAGMemoryView:
     A frozen "view" over a RAGMemory for evaluation reuse.
     No DB copy; only filters are frozen.
     """
-    def __init__(self, memory: "RAGMemory", *, exposure_round: Optional[int], run_id: Optional[str], include_base: bool = True):
+    def __init__(self, memory: "RAGMemory", *, exposure_round: Optional[int], run_id: Optional[str]):
         self.memory = memory
         self.exposure_round = exposure_round
         self.run_id = run_id
-        self.include_base = include_base
 
-    def retrieve(self, query: str, *, k: int = 20, buffer_k: int = 50, include_meta: bool = True):
+    def retrieve(self, query: str, *, k: int = 20, include_base: bool = True, include_meta: bool = True):
         return self.memory.retrieve(
             query=query,
             exposure_round=self.exposure_round,
             run_id=self.run_id,
-            include_base=self.include_base,
+            include_base=include_base,
             k=k,
-            buffer_k=buffer_k,
             include_meta=include_meta,
         )
 
@@ -330,7 +328,6 @@ class RAGMemory(MemoryBase):
         run_id: Optional[str] = None,
         include_base: bool = True,
         k: int = 20,
-        buffer_k: int = 50,
         include_meta: bool = True,
     ) -> List[Tuple[str, str, Dict[str, Any], float]]:
         """
@@ -341,14 +338,13 @@ class RAGMemory(MemoryBase):
 
         Returns list of (id, doc, meta, dist) length<=k
         """
-        kk = k + buffer_k
         items: List[Tuple[str, str, Dict[str, Any], float]] = []
 
         if include_base:
             items += self._query(
                 self.base,
                 query=query,
-                n_results=kk,
+                n_results=k,
                 where=None,
                 include_meta=include_meta,
             )
@@ -357,7 +353,7 @@ class RAGMemory(MemoryBase):
             items += self._query(
                 self.exposure,
                 query=query,
-                n_results=kk,
+                n_results=k,
                 where={"exposure_round": {"$lte": int(exposure_round)}},
                 include_meta=include_meta,
             )
@@ -366,7 +362,7 @@ class RAGMemory(MemoryBase):
             items += self._query(
                 self.trigger,
                 query=query,
-                n_results=kk,
+                n_results=k,
                 where={"run_id": str(run_id)},
                 include_meta=include_meta,
             )
