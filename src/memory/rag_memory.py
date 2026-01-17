@@ -506,6 +506,7 @@ Content:
         logger.info(f"[Evolve] ✅ Stored evolved memory (id={doc_id}, type={memory_type}, period={period})")
         return doc_id
 
+    
 def test():
     # Example usage demonstrating three-collection design
     memory = RAGMemory(
@@ -701,15 +702,6 @@ def test_with_true_database():
     print("✅ Exposure collection: Learned during exposure phase")
     print("✅ Trigger collection: Learned during trigger/attack phase")
     print("✅ Reset options: 'trigger', 'exposure', 'both', 'all'")
-
-
-# Tutorial:
-# memory.add_memory(content=..., mem_type="reflection", period="exposure", exposure_round=r)
-# memory.add_memory(content=..., mem_type="experience", period="trigger", run_id=run_id)
-# view = memory.snapshot_view(exposure_round=200, run_id=run_id, include_base=True)
-# topk = view.retrieve("some query", k=20)
-# exists = memory.exists("trigger", where={"run_id": run_id, "has_payload": True})
-
 
 if __name__ == "__main__":
     # test()
