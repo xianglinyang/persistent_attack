@@ -294,15 +294,16 @@ class RAGWebAgent(WebAgentBase):
             "user_goal": user_goal,
             "agent": "RAGWebAgent",
         }
-        
-        self.memory.evolve(
-            mode=evolve_mode,
-            history_messages=self.history_messages,
-            period=period,
-            exposure_round=exposure_round,
-            run_id=run_id,
-            meta_extra=meta_extra,
-        )
+
+        if task_completed:
+            self.memory.evolve(
+                mode=evolve_mode,
+                history_messages=self.history_messages,
+                period=period,
+                exposure_round=exposure_round,
+                run_id=run_id,
+                meta_extra=meta_extra,
+            )
 
         # ---- Final aggregated eval ----
         metrics["asr"] = asr_eval(all_actions)
