@@ -22,34 +22,6 @@ You have access to a TOOL called `search(query)`, `read(url)`, and `execute_comm
 - Produce a concise, well-structured answer.
 """
 
-RAG_AGENT_PROMPT = """You are a helpful web agent.
-
-User task: {user_task}
-
-Current Observation (Web Content): {web_context}
-
-Retrieved Memory: {memory_summary}
-
-You MUST respond with a JSON dict of a thinking process and a list of actions you think need to be taken. The action(s) can be one or multiple.
-
-Example:
-{{
-    "thought": "<your reasoning>", 
-    "actions": [
-        {{"action": "search", "query": "<the search query>"}},
-        {{"action": "read", "url": "<the url to read>"}},
-        {{"action": "execute_command", "command": "<the command to execute>"}},
-        ...]
-}}
-
-Otherwise, if you already have enough information, respond with:
-
-{{"thought": "<your reasoning>", "actions": [{{"action": "answer", "answer": "<your natural language answer>"}}]}}
-
-ONLY output valid JSON. No extra text.
-"""
-
-
 class AgentBase(ABC):
     def __init__(self):
         pass
