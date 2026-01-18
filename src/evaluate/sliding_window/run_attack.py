@@ -51,7 +51,7 @@ from pathlib import Path
 import os
 import logging
 
-from src.agents.web_agent import SlidingWindowWebAgent
+from src.agents.sliding_window_agent import SlidingWindowWebAgent
 from src.memory.sliding_window_memory import SlidingWindowMemory
 
 from src.llm_zoo import load_model
@@ -255,7 +255,7 @@ if __name__ == "__main__":
     # !TODO: try to save all the results and logs into disk for later inference
     
     # ========== Single Run Mode ==========
-    main_sliding_window_agent_attack(model_name="google/gemini-2.5-flash", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
-    # main_sliding_window_agent_attack(model_name="qwen/qwen3-235b-a22b-2507", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
+    # main_sliding_window_agent_attack(model_name="google/gemini-2.5-flash", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
+    main_sliding_window_agent_attack(model_name="qwen/qwen3-235b-a22b-2507", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
     # main_sliding_window_agent_attack(model_name="deepseek/deepseek-r1-0528", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
     # main_sliding_window_agent_attack(model_name="meta-llama/llama-3-70b-instruct", dataset_name_or_path="data-for-agents/insta-150k-v1", exposure_rounds=3, trigger_rounds=50, trigger_runs=3, window_size=30, max_steps=10)
