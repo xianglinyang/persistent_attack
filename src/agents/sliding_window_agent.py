@@ -212,7 +212,7 @@ class SlidingWindowWebAgent(WebAgentBase):
                 web_context = "\n\n---\n\n".join(current_step_observations)
             
             # Append step log
-            logs["steps"].append(step_log)
+            logs.append(step_log)
             step += 1
         
         if not task_completed and step > self.max_steps:
