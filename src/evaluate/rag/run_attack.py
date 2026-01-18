@@ -591,6 +591,9 @@ def main_rag_agent_exposure_experiment(
     # safety knobs
     allow_command_patterns: Optional[List[str]] = None,
     strict_cmd_asr: bool = False,
+    # guard knobs
+    guard: bool = False,
+    guard_model_name: Optional[str] = None,
     # NEW: batch mode flag
     use_batch_mode: bool = True,
 ) -> Dict[str, Any]:
@@ -624,6 +627,9 @@ def main_rag_agent_exposure_experiment(
     print(f"Exposure rounds: {exposure_rounds}")
     print(f"Evolve mode: {evolve_mode}")
     print(f"Batch mode: {use_batch_mode}")
+    print(f"Guard enabled: {guard}")
+    if guard:
+        print(f"Guard model: {guard_model_name}")
     print("=" * 80 + "\n")
 
     memory = RAGMemory(
@@ -639,7 +645,7 @@ def main_rag_agent_exposure_experiment(
     memory.reset(targets="both")
 
     llm = load_model(model_name)
-    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps)
+    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, guard=guard, guard_model_name=guard_model_name)
 
     # -----------------------
     # Phase 1: Exposure
@@ -742,6 +748,9 @@ def main_rag_agent_trigger_experiment(
     # safety knobs
     allow_command_patterns: Optional[List[str]] = None,
     strict_cmd_asr: bool = False,
+    # guard knobs
+    guard: bool = False,
+    guard_model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Trigger-only experiment:
@@ -772,6 +781,9 @@ def main_rag_agent_trigger_experiment(
     print(f"Top k: {top_k}")
     print(f"Allow command patterns: {allow_command_patterns}")
     print(f"Strict command ASR: {strict_cmd_asr}")
+    print(f"Guard enabled: {guard}")
+    if guard:
+        print(f"Guard model: {guard_model_name}")
     print("=" * 80 + "\n")
 
     memory = RAGMemory(
@@ -784,7 +796,7 @@ def main_rag_agent_trigger_experiment(
     )
 
     llm = load_model(model_name)
-    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps)
+    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, guard=guard, guard_model_name=guard_model_name)
 
     trigger_metrics: List[Dict[str, Any]] = []
     all_trigger_logs: List[Dict[str, Any]] = []
@@ -825,6 +837,8 @@ if __name__ == "__main__":
         trigger_name="trigger",
         allow_command_patterns=None,
         strict_cmd_asr=False,
+        guard=False,  # Enable guard model check
+        guard_model_name=None,  # e.g., "openai/gpt-4o-mini"
         use_batch_mode=False,  # Use batch mode for speed
     )
 
@@ -836,9 +850,12 @@ if __name__ == "__main__":
     #     evolve_mode="raw",
     #     db_path="/data2/xianglin/zombie_agent/db_storage/msmarco",
     #     top_k=20,
+    #     guard=False,
+    #     guard_model_name=None,
     #     use_batch_mode=False,  # Use sequential mode
     # )
 
+    # Example 3: Trigger experiment with guard
     # agent, trigger_metrics, all_trigger_logs = main_rag_agent_trigger_experiment(
     #     model_name="google/gemini-2.5-flash",
     #     dataset_name_or_path="data-for-agents/insta-150k-v1",
@@ -851,6 +868,8 @@ if __name__ == "__main__":
     #     top_k=20,
     #     allow_command_patterns=None,
     #     strict_cmd_asr=False,
+    #     guard=True,  # Enable guard for trigger phase
+    #     guard_model_name="openai/gpt-4o-mini",
     # )
     
     print("✅ Done.")
