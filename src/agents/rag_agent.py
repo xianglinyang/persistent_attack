@@ -180,7 +180,7 @@ class RAGWebAgent(WebAgentBase):
         self._add_history_message("user", user_goal)
 
         metrics: Dict[str, Any] = {}
-        logs: Dict[str, Any] = {"steps": []}
+        logs: List[Dict[str, Any]] = []
 
         web_context: str = ""
         task_completed = False
@@ -190,6 +190,15 @@ class RAGWebAgent(WebAgentBase):
         step = 1
         while step <= self.max_steps and not task_completed:
             print(f"[Step {step}]")
+            
+            # Initialize step log
+            step_log = {
+                "step": step,
+                "thought": "",
+                "actions": [],
+                "observations": [],
+            }
+            
             retrieved = self.memory.retrieve(
                 user_goal,
                 exposure_round=exposure_round,
@@ -214,6 +223,8 @@ class RAGWebAgent(WebAgentBase):
 
                     final_answer = f"""[GUARD BLOCKED] Prompt blocked by guard model.\n\n [Type]: {guard_result['category']}\n\n [Reason]: {guard_result['explanation']}"""
                     self._add_history_message("assistant", final_answer)
+                    step_log["observations"].append(final_answer)
+                    logs["steps"].append(step_log)
                     break
                 else:
                     print(f"[GUARD PASSED] Prompt passed guard model check")
@@ -223,11 +234,13 @@ class RAGWebAgent(WebAgentBase):
             parsed = self._parse_output(llm_output)
 
             thought = parsed.get("thought", "")
+            step_log["thought"] = thought
             print(f"[Agent Thought] {thought}")
             if thought:
                 self._add_history_message("assistant", f"(thought) {thought}")
 
             actions = parsed.get("actions", []) or []
+            step_log["actions"] = actions
             all_actions.extend(actions)
 
             print(f"[Processing Actions] {len(actions)} actions requested.")
@@ -241,6 +254,7 @@ class RAGWebAgent(WebAgentBase):
                 if action_name == "answer":
                     answer = action.get("answer", "")
                     final_answer = answer
+                    step_log["observations"].append(final_answer)
                     print(f"[Agent Answer] {answer}")
                     self._add_history_message("assistant", answer)
                     task_completed = True
@@ -251,6 +265,7 @@ class RAGWebAgent(WebAgentBase):
                     result = self.tool_server.execute(action_name, action)
                     result_str = str(result)
                     current_step_observations.append(result_str)
+                    step_log["observations"].append(result_str)
 
                     print(f"[Observation] {result_str[:200]}{'...' if len(result_str) > 200 else ''}")
 
@@ -261,6 +276,7 @@ class RAGWebAgent(WebAgentBase):
                     err = f"[ERROR] Unknown action '{action_name}'. Available: {self.tool_server.get_available_tools()}"
                     print(err)
                     current_step_observations.append(err)
+                    step_log["observations"].append(err)
                     self._add_history_message("tool", err)
 
                 print("--------------------------------")
@@ -269,16 +285,8 @@ class RAGWebAgent(WebAgentBase):
             if current_step_observations:
                 web_context = "\n\n---\n\n".join(current_step_observations)
 
-            # log step
-            logs["steps"].append(
-                {
-                    "step": step,
-                    "thought": thought,
-                    "actions": actions,
-                    "web_context": web_context,
-                    "memory_summary": memory_summary,
-                }
-            )
+            # Append step log
+            logs.append(step_log)
             step += 1
 
         if not task_completed and step > self.max_steps:

@@ -3,7 +3,7 @@ from src.llm_zoo import BaseLLM, load_model
 from src.memory.sliding_window_memory import SlidingWindowMemory
 from src.evaluate.attack_evaluator import sliding_window_exist_in_memory, asr_eval
 from src.guard.llm_detector import detect_attack, batch_detect_attack
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 
 SLIDING_AGENT_PROMPT = """You are a helpful web agent.
@@ -99,7 +99,7 @@ class SlidingWindowWebAgent(WebAgentBase):
     def run_task(self, user_goal: str, window_size: int = None, reset_memory: bool = True):
         
         metrics = dict()
-        logs = dict()
+        logs: List[Dict[str, Any]] = []   
         
         # Clear memory and initialize (controlled by reset_memory parameter)
         if reset_memory:
@@ -114,8 +114,14 @@ class SlidingWindowWebAgent(WebAgentBase):
         task_completed = False
         
         while step <= self.max_steps and not task_completed:
-            # define metric
+            # Initialize step metric and log
             metrics[str(step)] = dict()
+            step_log = {
+                "step": step,
+                "thought": "",
+                "actions": [],
+                "observations": [],
+            }
 
             print(f"\n[Step {step}]")
             memory_summary = self.memory.retrieve()
@@ -139,6 +145,10 @@ class SlidingWindowWebAgent(WebAgentBase):
 
                     final_answer = f"""[GUARD BLOCKED] Prompt blocked by guard model.\n\n [Type]: {guard_result['category']}\n\n [Reason]: {guard_result['explanation']}"""
                     self.memory.add_memory(final_answer, "answer")
+                    step_log["observations"].append(final_answer)
+                    metrics[str(step)]["observation"] = final_answer
+                    logs.append(step_log)
+                    
                     break
                 else:
                     print(f"[GUARD PASSED] Prompt passed guard model check")
@@ -148,16 +158,15 @@ class SlidingWindowWebAgent(WebAgentBase):
             parsed = self._parse_output(llm_output)
 
             thought = parsed.get("thought", "")
+            step_log["thought"] = thought
             print(f"[Agent Thought] {thought}")
             
             actions = parsed.get("actions", [])
             if not isinstance(actions, list):
                 print("[ERROR] Actions must be a list")
                 break
-            logs[str(step)] = {
-                "thought": thought,
-                "actions": actions,
-            }
+            
+            step_log["actions"] = actions
             metrics[str(step)]['asr'] = asr_eval(actions)
 
             # Process each action in the list
@@ -172,6 +181,9 @@ class SlidingWindowWebAgent(WebAgentBase):
                     answer = action.get("answer", "")
                     print(f"[Agent Action] Answer: {answer}")
                     self.memory.add_memory(f"answer: {answer}", "answer")
+                    step_log["observations"].append(f"Answer: {answer}")
+                    metrics[str(step)]['observation'] = f"Answer: {answer}"
+                    
                     task_completed = True
                     break
                 
@@ -184,26 +196,28 @@ class SlidingWindowWebAgent(WebAgentBase):
                     # Execute the tool
                     result = self.tool_server.execute(action_name, action)
                     current_step_observations.append(result)  # Collect observation
+                    step_log["observations"].append(result)
                     
                     # Add to memory
                     self.memory.add_memory(f"{action_name}: {action_params_str}", "action")
                     self.memory.add_memory(result, "observation")
                     print(f"[Observation] {result[:200]}{'...' if len(result) > 200 else ''}")
                 else:
-                    print(f"[ERROR] Unknown action '{action_name}'. Available: {self.tool_server.get_available_tools()}")
+                    err_msg = f"[ERROR] Unknown action '{action_name}'. Available: {self.tool_server.get_available_tools()}"
+                    print(err_msg)
+                    step_log["observations"].append(err_msg)
             
             # Update web_context with all observations from this step
             if current_step_observations:
                 web_context = "\n\n---\n\n".join(current_step_observations)
             
+            # Append step log
+            logs["steps"].append(step_log)
             step += 1
         
         if not task_completed and step > self.max_steps:
             print(f"\n[Warning] Reached max steps ({self.max_steps}) without completing task")
             self.memory.add_memory(f"answer: Reached max steps ({self.max_steps}) without completing task", "answer")
-        if not task_completed and step <= self.max_steps:
-            print(f"\n[Warning] Triggered guard model check and stopped at step {step}")
-            self.memory.add_memory(f"answer: Triggered guard model check and stopped at step {step}", "answer")
         
         print("\n[Task Complete]")
         return metrics, logs
