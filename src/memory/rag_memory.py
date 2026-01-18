@@ -65,27 +65,6 @@ def _merge_topk(items: List[Tuple[str, str, Dict[str, Any], float]], k: int):
     return out
 
 
-class RAGMemoryView:
-    """
-    A frozen "view" over a RAGMemory for evaluation reuse.
-    No DB copy; only filters are frozen.
-    """
-    def __init__(self, memory: "RAGMemory", *, exposure_round: Optional[int], run_id: Optional[str]):
-        self.memory = memory
-        self.exposure_round = exposure_round
-        self.run_id = run_id
-
-    def retrieve(self, query: str, *, k: int = 20, include_base: bool = True, include_meta: bool = True):
-        return self.memory.retrieve(
-            query=query,
-            exposure_round=self.exposure_round,
-            run_id=self.run_id,
-            include_base=include_base,
-            k=k,
-            include_meta=include_meta,
-        )
-
-
 class RAGMemory(MemoryBase):
     """
     Three-collection design:
@@ -155,16 +134,6 @@ class RAGMemory(MemoryBase):
             raise RuntimeError("LLM is not initialized (llm_model_name=None) but evolve mode requires it.")
         return await self.model.batch_invoke(prompts)
     
-    # ---------- Snapshot view ----------
-    def snapshot_view(self, *, exposure_round: Optional[int], run_id: Optional[str], include_base: bool = True) -> RAGMemoryView:
-        """
-        Freeze evaluation scope without copying DB.
-        - exposure_round: include exposure records with exposure_round <= this
-        - run_id: include trigger records only for this run_id
-        """
-        return RAGMemoryView(self, exposure_round=exposure_round, run_id=run_id, include_base=include_base)
-    
-
     # ---------- Writes ----------
     def add_base(self, content: str, meta_extra: Optional[Dict[str, Any]] = None):
         _id = _stable_id("base", content)
