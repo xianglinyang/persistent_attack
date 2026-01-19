@@ -21,6 +21,7 @@ openai_models = [
     "gpt-5-mini",
     "gpt-5-nano",
     "gpt-5-chat-latest",
+    "gpt-oss-120b",
 ]
 
 gemini_models = [
@@ -73,6 +74,7 @@ openrouter_models = [
     "openai/gpt-4o-mini",
     "openai/gpt-4-turbo",
     "openai/gpt-3.5-turbo",
+    "openai/gpt-oss-120b",
 
     # gemini
     "google/gemini-2.5-flash-lite",
@@ -88,6 +90,15 @@ openrouter_models = [
     "deepseek/deepseek-r1-0528",
     "deepseek/deepseek-chat-v3-0324",
     "deepseek/deepseek-r1-0528-qwen3-8b",
+    "deepseek/deepseek-v3.2-speciale",
+    "deepseek/deepseek-v3.2",
+    "deepseek/deepseek-v3.1-terminus",
+    "deepseek/deepseek-v3.1",
+    "deepseek/deepseek-r1-0528",
+    "deepseek/deepseek-r1",
+    "deepseek/deepseek-r1-distill-qwen-32b",
+    "deepseek/deepseek-r1-distill-llama-70b",
+    "deepseek/deepseek-chat-v3-0324",
 
     # anthropic
     "anthropic/claude-opus-4.1",
@@ -177,6 +188,7 @@ implementation_to_name = {
     "gpt-5-mini": "gpt-5-mini",
     "gpt-5-nano": "gpt-5-nano",
     "gpt-5-chat-latest": "gpt-5-chat-latest",
+    "gpt-oss-120b": "gpt-oss-120b",
 
     # Gemini models
     "gemini-2.5-pro": "gemini-2.5-pro",
@@ -225,6 +237,7 @@ implementation_to_name = {
     "openai/gpt-4o": "gpt-4o",
     "openai/gpt-4-turbo": "gpt-4-turbo",
     "openai/gpt-3.5-turbo": "gpt-3.5-turbo",
+    "openai/gpt-oss-120b": "gpt-oss-120b",
 
     # OpenRouter Gemini models
     "google/gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
@@ -237,10 +250,18 @@ implementation_to_name = {
     "google/gemini-2.0-flash": "gemini-2.0-flash",
 
     # OpenRouter DeepSeek models
-    "deepseek/deepseek-r1-0528": "deepseek-r1-0528",
     "deepseek/deepseek-chat-v3-0324": "deepseek-chat-v3-0324",
     "deepseek/deepseek-r1-0528-qwen3-8b": "deepseek-r1-0528-qwen3-8b",
     "deepseek/deepseek-r1-distill-qwen-7b": "deepseek-r1-distill-qwen-7b",
+    "deepseek/deepseek-v3.2-speciale": "deepseek-v3.2-speciale",
+    "deepseek/deepseek-v3.2": "deepseek-v3.2",
+    "deepseek/deepseek-v3.1-terminus": "deepseek-v3.1-terminus",
+    "deepseek/deepseek-v3.1": "deepseek-v3.1",
+    "deepseek/deepseek-r1-0528": "deepseek-r1-0528",
+    "deepseek/deepseek-r1": "deepseek-r1",
+    "deepseek/deepseek-r1-distill-qwen-32b": "deepseek-r1-distill-qwen-32b",
+    "deepseek/deepseek-r1-distill-llama-70b": "deepseek-r1-distill-llama-70b",
+    "deepseek/deepseek-chat-v3-0324": "deepseek-chat-v3-0324",
 
     # OpenRouter Anthropic models
     "anthropic/claude-opus-4.1": "claude-opus-4.1",

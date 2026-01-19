@@ -27,6 +27,7 @@ MODEL_PRICING = {
     "gpt-5-mini": {"input": 0.25, "output": 2.00},
     "gpt-5-nano": {"input": 0.05, "output": 0.40},
     "gpt-5-chat-latest": {"input": 1.25, "output": 10.00},
+    "gpt-oss-120b": {"input": 0.035, "output": 0.18},
 
     # Gemini models
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
@@ -65,7 +66,7 @@ MODEL_PRICING = {
     "openai/o1": {"input": 15.00*1.05, "output": 60.00*1.05},
     "openai/o1-mini": {"input": 1.00*1.05, "output": 4.00*1.05},
     "openai/chatgpt-4o-latest": {"input": 2.50*1.05, "output": 10.00*1.05},
-
+    "openai/gpt-oss-120b": {"input": 0.039, "output": 0.19},
     "google/gemini-2.5-flash-lite": {"input": 0.10*1.05, "output": 0.40*1.05},
     "google/gemini-2.5-flash-lite-preview-06-17": {"input": 0.10*1.05, "output": 0.40*1.05},
     "google/gemini-2.5-flash": {"input": 0.30*1.05, "output": 2.50*1.05},

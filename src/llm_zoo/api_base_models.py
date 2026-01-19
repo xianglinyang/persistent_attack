@@ -14,6 +14,8 @@ In need of:
 Use openai for now.
 """
 import os
+import time
+import json
 import asyncio
 from typing import List
 from openai import OpenAI, AsyncOpenAI
@@ -169,60 +171,96 @@ class OpenRouterModel(BaseLLM):
         self.client = OpenAI(api_key=os.environ["OPENROUTER_API_KEY"], base_url="https://openrouter.ai/api/v1")
         self.async_client = AsyncOpenAI(api_key=os.environ["OPENROUTER_API_KEY"], base_url="https://openrouter.ai/api/v1")
     
-    def invoke(self, prompt: str, system_prompt: str = None, return_cost: bool = False) -> CallResult:
+    def invoke(self, prompt: str, system_prompt: str = None, return_cost: bool = False, max_retries: int = 2) -> CallResult:
         """Generates model output using OpenAI's API"""
-        if system_prompt:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ]
-        else:
-            messages = [{"role": "user", "content": prompt}]
+        for attempt in range(max_retries):
+            try:
+                if system_prompt:
+                    messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt},
+                    ]
+                else:
+                    messages = [{"role": "user", "content": prompt}]
 
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            n=1,
-        )
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    n=1,
+                )
 
-        if return_cost:
-        
-            # Calculate costs
-            input_tokens = response.usage.prompt_tokens
-            output_tokens = response.usage.completion_tokens
-            cost = calculate_cost(self.model_name, input_tokens, output_tokens)
-            
-            return CallResult(
-                response=response.choices[0].message.content.strip(),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost=cost,
-                model_name=self.model_name
-            )
-        else:
-            return response.choices[0].message.content.strip()
+                if return_cost:
+                
+                    # Calculate costs
+                    input_tokens = response.usage.prompt_tokens
+                    output_tokens = response.usage.completion_tokens
+                    cost = calculate_cost(self.model_name, input_tokens, output_tokens)
+                    
+                    return CallResult(
+                        response=response.choices[0].message.content.strip(),
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        cost=cost,
+                        model_name=self.model_name
+                    )
+                else:
+                    return response.choices[0].message.content.strip()
+            except json.JSONDecodeError as e:
+                # JSON parsing error from API response
+                if attempt < max_retries - 1:
+                    logger.warning(f"OpenRouterModel JSON decode error (attempt {attempt + 1}/{max_retries}) for model {self.model_name}: {e}. API returned invalid JSON. Retrying...")
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s...
+                else:
+                    logger.error(f"OpenRouterModel JSON decode error (all {max_retries} attempts failed) for model {self.model_name}: {e}")
+                    raise
+            except Exception as e:
+                # Other errors (network, rate limit, etc.)
+                if attempt < max_retries - 1:
+                    logger.warning(f"OpenRouterModel invoke error (attempt {attempt + 1}/{max_retries}) for model {self.model_name}: {type(e).__name__}: {e}. Retrying...")
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s...
+                else:
+                    logger.error(f"OpenRouterModel invoke error (all {max_retries} attempts failed) for model {self.model_name}: {type(e).__name__}: {e}")
+                    raise
 
-    def invoke_messages(self, messages: List[dict], return_cost: bool = False) -> CallResult:
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            **self.model_kwargs
-        )
-        if return_cost:
-            # Calculate costs
-            input_tokens = response.usage.prompt_tokens
-            output_tokens = response.usage.completion_tokens
-            cost = calculate_cost(self.model_name, input_tokens, output_tokens)
-            
-            return CallResult(
-                response=response.choices[0].message.content,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost=cost,
-                model_name=self.model_name
-            )
-        else:
-            return response.choices[0].message.content
+    def invoke_messages(self, messages: List[dict], return_cost: bool = False, max_retries: int = 2) -> CallResult:
+        for attempt in range(max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    **self.model_kwargs
+                )
+                if return_cost:
+                    # Calculate costs
+                    input_tokens = response.usage.prompt_tokens
+                    output_tokens = response.usage.completion_tokens
+                    cost = calculate_cost(self.model_name, input_tokens, output_tokens)
+                    
+                    return CallResult(
+                        response=response.choices[0].message.content,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        cost=cost,
+                        model_name=self.model_name
+                    )
+                else:
+                    return response.choices[0].message.content
+            except json.JSONDecodeError as e:
+                # JSON parsing error from API response
+                if attempt < max_retries - 1:
+                    logger.warning(f"OpenRouterModel JSON decode error (attempt {attempt + 1}/{max_retries}) for model {self.model_name}: {e}. API returned invalid JSON. Retrying...")
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s...
+                else:
+                    logger.error(f"OpenRouterModel JSON decode error (all {max_retries} attempts failed) for model {self.model_name}: {e}")
+                    raise
+            except Exception as e:
+                # Other errors (network, rate limit, etc.)
+                if attempt < max_retries - 1:
+                    logger.warning(f"OpenRouterModel invoke_messages error (attempt {attempt + 1}/{max_retries}) for model {self.model_name}: {type(e).__name__}: {e}. Retrying...")
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s...
+                else:
+                    logger.error(f"OpenRouterModel invoke_messages error (all {max_retries} attempts failed) for model {self.model_name}: {type(e).__name__}: {e}")
+                    raise
     
     @rate_limited_async_call(OPENROUTER_RATE_LIMIT)
     async def _get_completion(self, prompt_content: str, system_prompt: str = None, return_cost: bool = False) -> CallResult:
