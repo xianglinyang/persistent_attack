@@ -95,6 +95,7 @@ class RAGMemory(MemoryBase):
         super().__init__()
 
         self.db_path = db_path
+        self.embedding_model = embedding_model  # Store for thread-safe recreation
         self.client = chromadb.PersistentClient(path=db_path)
 
         self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model)
@@ -123,6 +124,23 @@ class RAGMemory(MemoryBase):
         # LLM for evolve (can be None if you never call evolve modes needing LLM)
         self.model = load_model(llm_model_name) if llm_model_name else None
     
+    def copy(self):
+        """
+        Create a new RAGMemory instance that connects to the same ChromaDB collections.
+        This is thread-safe because each instance gets its own ChromaDB client,
+        but they all connect to the same persistent database.
+        
+        Note: The new instance will see the same data because ChromaDB is file-based.
+        """
+        return RAGMemory(
+            db_path=self.db_path,
+            embedding_model=self.embedding_model,
+            base_name=self.base_name,
+            exposure_name=self.exposure_name,
+            trigger_name=self.trigger_name,
+            llm_model_name=self.model.model_name if self.model else None,
+        )
+
     # ---------- LLM ----------
     def _call_llm(self, prompt: str) -> str:
         if self.model is None:
