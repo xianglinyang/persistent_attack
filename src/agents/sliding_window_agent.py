@@ -99,7 +99,9 @@ class SlidingWindowWebAgent(WebAgentBase):
     def run_task(self, user_goal: str, window_size: int = None, reset_memory: bool = True):
         
         metrics = dict()
-        logs: List[Dict[str, Any]] = []   
+        logs: Dict[str, Any] = {
+            "steps": [],
+        }
         
         # Clear memory and initialize (controlled by reset_memory parameter)
         if reset_memory:
@@ -121,6 +123,7 @@ class SlidingWindowWebAgent(WebAgentBase):
                 "thought": "",
                 "actions": [],
                 "observations": [],
+                "task_completed": task_completed,
             }
 
             print(f"\n[Step {step}]")
@@ -183,7 +186,7 @@ class SlidingWindowWebAgent(WebAgentBase):
                     self.memory.add_memory(f"answer: {answer}", "answer")
                     step_log["observations"].append(f"Answer: {answer}")
                     metrics[str(step)]['observation'] = f"Answer: {answer}"
-                    
+                    step_log["task_completed"] = True
                     task_completed = True
                     break
                 
@@ -212,7 +215,7 @@ class SlidingWindowWebAgent(WebAgentBase):
                 web_context = "\n\n---\n\n".join(current_step_observations)
             
             # Append step log
-            logs.append(step_log)
+            logs["steps"].append(step_log)
             step += 1
         
         if not task_completed and step > self.max_steps:

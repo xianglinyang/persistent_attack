@@ -137,7 +137,7 @@ class RAGWebAgent(WebAgentBase):
     def run_task(
         self,
         user_goal: str,
-        evolve_mode: str = "raw",
+        evolve_mode: str = None,
         *,
         # ---- align with your new RAGMemory setting ----
         period: str = "trigger",                 # "exposure" or "trigger" (base typically not evolved here)
@@ -152,7 +152,7 @@ class RAGWebAgent(WebAgentBase):
         
         Args:
             user_goal: The user's query/task
-            evolve_mode: Memory evolution mode ("raw", "reflection", "experience")
+            evolve_mode: Memory evolution mode (None, "raw", "reflection", "experience"), default is None, which means no memory evolution
             period: Memory period ("exposure" or "trigger")
             exposure_round: Exposure round number (for filtering/organizing memories)
             top_k: Number of memory items to retrieve
@@ -180,7 +180,9 @@ class RAGWebAgent(WebAgentBase):
         self._add_history_message("user", user_goal)
 
         metrics: Dict[str, Any] = {}
-        logs: List[Dict[str, Any]] = []
+        logs: Dict[str, Any] = {
+            "steps": [],
+        }
 
         web_context: str = ""
         task_completed = False
@@ -197,6 +199,7 @@ class RAGWebAgent(WebAgentBase):
                 "thought": "",
                 "actions": [],
                 "observations": [],
+                "task_completed": task_completed,
             }
             
             retrieved = self.memory.retrieve(
@@ -255,6 +258,8 @@ class RAGWebAgent(WebAgentBase):
                     answer = action.get("answer", "")
                     final_answer = answer
                     step_log["observations"].append(final_answer)
+                    step_log["task_completed"] = True
+                    
                     print(f"[Agent Answer] {answer}")
                     self._add_history_message("assistant", answer)
                     task_completed = True
@@ -286,7 +291,7 @@ class RAGWebAgent(WebAgentBase):
                 web_context = "\n\n---\n\n".join(current_step_observations)
 
             # Append step log
-            logs.append(step_log)
+            logs["steps"].append(step_log)
             step += 1
 
         if not task_completed and step > self.max_steps:
@@ -303,7 +308,7 @@ class RAGWebAgent(WebAgentBase):
             "agent": "RAGWebAgent",
         }
 
-        if task_completed:
+        if task_completed and evolve_mode is not None:
             self.memory.evolve(
                 mode=evolve_mode,
                 history_messages=self.history_messages,
@@ -312,36 +317,35 @@ class RAGWebAgent(WebAgentBase):
                 run_id=run_id,
                 meta_extra=meta_extra,
             )
-
-        # ---- Final aggregated eval ----
-        metrics["asr"] = asr_eval(all_actions)
-        metrics["rag_payload_cnt"] = rag_exist_in_memory(
-            self.memory, 
-            period=period, 
-            exposure_round=exposure_round, 
-            run_id=run_id
-        )
-        metrics["recall@10"] = rag_retrieve_recall(
-            self.memory,
-            user_goal,
-            exposure_round=exposure_round,
-            run_id=run_id,
-            top_k=10,
-        )
-        metrics["recall@50"] = rag_retrieve_recall(
-            self.memory,
-            user_goal,
-            exposure_round=exposure_round,
-            run_id=run_id,
-            top_k=50,
-        )
-        metrics["recall@100"] = rag_retrieve_recall(
-            self.memory,
-            user_goal,
-            exposure_round=exposure_round,
-            run_id=run_id,
-            top_k=100,
-        )
+            # ---- Final aggregated eval ----
+            metrics["asr"] = asr_eval(all_actions)
+            metrics["rag_payload_cnt"] = rag_exist_in_memory(
+                self.memory, 
+                period=period, 
+                exposure_round=exposure_round, 
+                run_id=run_id
+            )
+            metrics["recall@10"] = rag_retrieve_recall(
+                self.memory,
+                user_goal,
+                exposure_round=exposure_round,
+                run_id=run_id,
+                top_k=10,
+            )
+            metrics["recall@50"] = rag_retrieve_recall(
+                self.memory,
+                user_goal,
+                exposure_round=exposure_round,
+                run_id=run_id,
+                top_k=50,
+            )
+            metrics["recall@100"] = rag_retrieve_recall(
+                self.memory,
+                user_goal,
+                exposure_round=exposure_round,
+                run_id=run_id,
+                top_k=100,
+            )
         
         logs["history_messages"] = self.history_messages
         logs["memory_scope"] = {
