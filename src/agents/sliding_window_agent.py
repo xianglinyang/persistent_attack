@@ -150,7 +150,7 @@ class SlidingWindowWebAgent(WebAgentBase):
                     self.memory.add_memory(final_answer, "answer")
                     step_log["observations"].append(final_answer)
                     metrics[str(step)]["observation"] = final_answer
-                    logs.append(step_log)
+                    logs["steps"].append(step_log)
                     
                     break
                 else:
