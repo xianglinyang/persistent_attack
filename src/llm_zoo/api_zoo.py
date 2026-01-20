@@ -109,6 +109,7 @@ openrouter_models = [
     "anthropic/claude-3.5-sonnet",
     "anthropic/claude-3-haiku",
     "anthropic/claude-3-opus",
+    "anthropic/claude-haiku-4.5",
 
     # qwen
     # 3.0
@@ -272,6 +273,7 @@ implementation_to_name = {
     "anthropic/claude-3.5-sonnet": "claude-3.5-sonnet",
     "anthropic/claude-3-haiku": "claude-3-haiku",
     "anthropic/claude-3-opus": "claude-3-opus",
+    "anthropic/claude-haiku-4.5": "claude-haiku-4.5",
 
     # OpenRouter Qwen models
     "qwen/qwen-turbo": "qwen-turbo",
