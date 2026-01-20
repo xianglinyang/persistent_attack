@@ -50,6 +50,7 @@ RAG Attack:
 from pathlib import Path
 import os
 import logging
+import argparse
 
 from src.agents.sliding_window_agent import SlidingWindowWebAgent
 from src.memory.sliding_window_memory import SlidingWindowMemory
@@ -318,19 +319,47 @@ def main_sliding_window_agent_attack(
 
 
 if __name__ == "__main__":
-    # !TODO: try to save all the results and logs into disk for later inference
     
-    # ========== Without Guard (Default) ==========
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_name", type=str, default="qwen/qwen3-235b-a22b-2507")
+    parser.add_argument("--dataset_name_or_path", type=str, default="data-for-agents/insta-150k-v1")
+    parser.add_argument("--exposure_rounds", type=int, default=3)
+    parser.add_argument("--trigger_rounds", type=int, default=50)
+    parser.add_argument("--trigger_runs", type=int, default=3)
+    parser.add_argument("--window_size", type=int, default=30)
+    parser.add_argument("--max_steps", type=int, default=10)
+    parser.add_argument("--guard", type=int, default=0)
+    parser.add_argument("--guard_model_name", type=str, default="openai/gpt-4.1-nano")
+    args = parser.parse_args()
+
     main_sliding_window_agent_attack(
-        model_name="qwen/qwen3-235b-a22b-2507", 
-        dataset_name_or_path="data-for-agents/insta-150k-v1", 
-        exposure_rounds=3, 
-        trigger_rounds=50, 
-        trigger_runs=3, 
-        window_size=30, 
-        max_steps=10,
-        guard=False,  # No guard
+        model_name=args.model_name,
+        dataset_name_or_path=args.dataset_name_or_path,
+        exposure_rounds=args.exposure_rounds,
+        trigger_rounds=args.trigger_rounds,
+        trigger_runs=args.trigger_runs,
+        window_size=args.window_size,
+        max_steps=args.max_steps,
+        guard=args.guard,
+        guard_model_name=args.guard_model_name,
     )
+
+
+    # ========================================
+    # Examples Below:
+    # ========================================
+    
+    # # ========== Without Guard (Default) ==========
+    # main_sliding_window_agent_attack(
+    #     model_name="qwen/qwen3-235b-a22b-2507", 
+    #     dataset_name_or_path="data-for-agents/insta-150k-v1", 
+    #     exposure_rounds=3, 
+    #     trigger_rounds=50, 
+    #     trigger_runs=3, 
+    #     window_size=30, 
+    #     max_steps=10,
+    #     guard=False,  # No guard
+    # )
     
     # ========== With Guard Model ==========
     # main_sliding_window_agent_attack(
