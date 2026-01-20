@@ -58,11 +58,12 @@ def _payload_flags(text: str) -> Dict[str, bool]:
     a = bool(SEND_CONV_RE.search(text))
     b = bool(EXEC_CMD_RE.search(text))
     c = bool(RELOAD_URL_RE.search(text))
+    d = bool(RELOAD_KEYWORD_RE.search(text))
     return {
-        "has_payload": (a or b or c),
+        "has_payload": (a or b or c or d),
         "has_send_conv": a,
         "has_exec_cmd": b,
-        "has_reload_url": c,
+        "has_reload_url": c or d,
     }
 
 # -----------------------------
