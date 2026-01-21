@@ -354,7 +354,7 @@ def main():
     ap.add_argument("--beir_name", type=str, default="nfcorpus", help="BeIR dataset name (only used with --preset=beir)")
     ap.add_argument("--streaming", action="store_true", help="Use streaming mode for datasets")
 
-    ap.add_argument("--limit", type=int, default=50000)
+    ap.add_argument("--limit", type=int, default=5000)
     ap.add_argument("--batch_size", type=int, default=512)
 
     args = ap.parse_args()
