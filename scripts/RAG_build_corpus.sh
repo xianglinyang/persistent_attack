@@ -3,7 +3,11 @@
 # Collections: base (preloaded), exposure (learned), trigger (attack)
 
 # MS MARCO passages (recommended for general QA)
-python src/evaluate/rag/build_chroma_corpus.py --preset msmarco --limit 50000 --reset
+python src/evaluate/rag/build_chroma_corpus.py \
+    --db_path /data2/xianglin/zombie_agent/gemini_db --preset msmarco \
+    --limit 3000 \
+    --reset \
+    --embedding_model all-MiniLM-L6-v2 \
 
 # BeIR dataset (e.g., nfcorpus, scifact, trec-covid)
 # python src/evaluate/rag/build_chroma_corpus.py --preset beir --beir_name nfcorpus --limit 10000
