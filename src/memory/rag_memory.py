@@ -396,6 +396,36 @@ class RAGMemory(MemoryBase):
 
         logger.info(f"[Memory Reset] Reset complete for: {targets}")
     
+    def get_max_exposure_round(self) -> Optional[int]:
+        """
+        Get the maximum exposure_round from the exposure collection.
+        Returns None if collection is empty or no exposure_round metadata exists.
+        """
+        try:
+            # Get all documents from exposure collection
+            result = self.exposure.get(include=["metadatas"])
+            
+            if not result or not result.get("metadatas"):
+                return None
+            
+            # Extract exposure_round values from metadata
+            exposure_rounds = []
+            for meta in result["metadatas"]:
+                if meta and "exposure_round" in meta:
+                    try:
+                        exposure_rounds.append(int(meta["exposure_round"]))
+                    except (ValueError, TypeError):
+                        continue
+            
+            if not exposure_rounds:
+                return None
+            
+            return max(exposure_rounds)
+            
+        except Exception as e:
+            logger.warning(f"[Memory] Error getting max exposure_round: {e}")
+            return None
+    
     # ---------- Evolve ----------
     def evolve(
         self,
