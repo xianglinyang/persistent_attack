@@ -63,9 +63,15 @@ class RAGWebAgent(WebAgentBase):
     def _format_retrieval_as_memory_summary(
         self,
         retrieved: Any,
+        max_chars_per_doc: int = 50000,
+        max_total_chars: int = 100000,
     ) -> str:
         """
         retrieved is usually: List[(id, doc, meta, dist)] from RAGMemory.retrieve / RAGMemoryView.retrieve
+        
+        Args:
+            max_chars_per_doc: Maximum characters per individual document (default: 2000)
+            max_total_chars: Maximum total characters for the entire memory summary (default: 30000)
         """
         if not retrieved:
             return "(Memory: empty)"
@@ -77,16 +83,29 @@ class RAGWebAgent(WebAgentBase):
                 items.append((str(_id), str(doc), dict(meta or {}), float(dist)))
         else:
             # fallback to string
-            return str(retrieved)
+            return str(retrieved)[:max_total_chars]
 
         out = []
+        total_chars = 0
         for i, (_id, doc, meta, dist) in enumerate(items, 1):
             # period = meta.get("period", "?")
             # mem_type = meta.get("mem_type", "?")
             # hp = meta.get("has_payload", None)
             # hp_txt = f", has_payload={hp}" if isinstance(hp, bool) else ""
             # out.append(f"[{i}] ({period}/{mem_type}, dist={dist:.4f}{hp_txt}) {snippet}")
-            out.append(doc)
+            
+            # Truncate individual document if needed
+            truncated_doc = doc[:max_chars_per_doc]
+            if len(doc) > max_chars_per_doc:
+                truncated_doc += "... [truncated]"
+            
+            # Check if adding this would exceed total limit
+            if total_chars + len(truncated_doc) + 1 > max_total_chars:  # +1 for newline
+                out.append(f"... [remaining {len(items) - i} documents omitted due to length limit]")
+                break
+            
+            out.append(truncated_doc)
+            total_chars += len(truncated_doc) + 1  # +1 for newline
 
         return "\n".join(out)
 
@@ -289,6 +308,10 @@ class RAGWebAgent(WebAgentBase):
             # update web context (you can also choose to accumulate instead of overwrite)
             if current_step_observations:
                 web_context = "\n\n---\n\n".join(current_step_observations)
+                # Truncate web_context to prevent token overflow (max ~20000 chars ≈ 5000 tokens)
+                max_web_context_chars = 100000
+                if len(web_context) > max_web_context_chars:
+                    web_context = web_context[:max_web_context_chars] + "\n\n... [web context truncated due to length]"
 
             # Append step log
             logs["steps"].append(step_log)
