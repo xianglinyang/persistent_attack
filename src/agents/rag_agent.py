@@ -156,12 +156,9 @@ class RAGWebAgent(WebAgentBase):
         self,
         user_goal: str,
         evolve_mode: str = None,
-        *,
-        # ---- align with your new RAGMemory setting ----
         period: str = "trigger",                 # "exposure" or "trigger" (base typically not evolved here)
         exposure_round: Optional[int] = None,    # used when period="exposure" or for snapshot scope
         top_k: int= 20,           # top_k for retrieval
-        # ---- tool safety knobs ----
         allow_command_patterns: Optional[List[str]] = None,
         strict_cmd_asr: bool = False,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -271,13 +268,12 @@ class RAGWebAgent(WebAgentBase):
                 logger.info(f"[Agent Action] {action_name}: {action_params_str}")
 
                 if action_name == "answer":
-                    answer = action.get("answer", "")
-                    final_answer = answer
+                    final_answer = action.get("answer", "")
                     step_log["observations"].append(final_answer)
                     step_log["task_completed"] = True
                     
-                    logger.info(f"[Agent Answer] {answer}")
-                    self._add_history_message("assistant", answer)
+                    logger.info(f"[Agent Answer] {final_answer}")
+                    self._add_history_message("assistant", final_answer)
                     task_completed = True
                     break
 
