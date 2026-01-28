@@ -62,17 +62,6 @@ def save_exposure_metrics(exposure_metrics, logs, save_path):
     with open(save_path, 'w') as f:
         json.dump(combined_data, f, indent=4)
 
-    # 2. Save flat metrics to CSV for quick analysis
-    # We exclude 'full_metrics' from the CSV to keep it clean
-    flat_metrics = []
-    for entry in exposure_metrics:
-        flat_entry = {k: v for k, v in entry.items() if k != 'full_metrics'}
-        flat_metrics.append(flat_entry)
-    
-    csv_path = save_path.replace('.json', '.csv')
-    pd.DataFrame(flat_metrics).to_csv(csv_path, index=False)
-    print(f"Exposure metrics saved to {save_path} and {csv_path}")
-
 
 def save_trigger_metrics(trigger_metrics, logs, save_path):
     """
@@ -88,14 +77,3 @@ def save_trigger_metrics(trigger_metrics, logs, save_path):
     }
     with open(save_path, 'w') as f:
         json.dump(combined_data, f, indent=4)
-
-    # 2. Save flat metrics to CSV
-    # Extract all keys except the nested 'full_metrics'
-    flat_metrics = []
-    for entry in trigger_metrics:
-        flat_entry = {k: v for k, v in entry.items() if k != 'full_metrics'}
-        flat_metrics.append(flat_entry)
-
-    csv_path = save_path.replace('.json', '.csv')
-    pd.DataFrame(flat_metrics).to_csv(csv_path, index=False)
-    print(f"Trigger metrics saved to {save_path} and {csv_path}")
