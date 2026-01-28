@@ -310,9 +310,7 @@ class RAGMemory(MemoryBase):
     def retrieve(
         self,
         query: str,
-        *,
         exposure_round: Optional[int] = None,
-        run_id: Optional[str] = None,
         include_base: bool = True,
         k: int = 20,
         include_meta: bool = True,
@@ -321,7 +319,7 @@ class RAGMemory(MemoryBase):
         Composite retrieval from three collections:
           - base: optionally included
           - exposure: filtered by exposure_round <= R (if provided)
-          - trigger: filtered by run_id (if provided)
+          - trigger: 
 
         Returns list of (id, doc, meta, dist) length<=k
         """
@@ -345,14 +343,14 @@ class RAGMemory(MemoryBase):
                 include_meta=include_meta,
             )
 
-        if run_id is not None:
-            items += self._query(
-                self.trigger,
-                query=query,
-                n_results=k,
-                where={"run_id": str(run_id)},
-                include_meta=include_meta,
-            )
+
+        items += self._query(
+            self.trigger,
+            query=query,
+            n_results=k,
+            where=None,
+            include_meta=include_meta,
+        )
 
         return _merge_topk(items, k)
 
