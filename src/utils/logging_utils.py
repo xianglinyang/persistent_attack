@@ -21,14 +21,23 @@ def setup_logging(
     # Setup logging format
     log_format = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     date_format = "%m/%d/%Y %H:%M:%S"
+    formatter = logging.Formatter(log_format, datefmt=date_format)
     
-    # Setup logging to both file and console
-    logging.basicConfig(
-        format=log_format,
-        datefmt=date_format,
-        level=log_level,
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
+    # Get root logger and clear any existing handlers
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+    root_logger.handlers.clear()
+    
+    # Add file handler
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(log_level)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+    
+    # Add console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+    
+    return log_file
