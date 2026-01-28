@@ -281,10 +281,10 @@ def rag_count_recall(
         # Check metadata flag first (fast)
         has_payload = meta.get("has_payload", False)
         
-        # If no metadata flag, scan the document text (fallback)
-        if not has_payload and doc:
-            flags = _payload_flags(doc)
-            has_payload = flags["has_payload"]
+        # # If no metadata flag, scan the document text (fallback)
+        # if not has_payload and doc:
+        #     flags = _payload_flags(doc)
+        #     has_payload = flags["has_payload"]
         
         if has_payload:
             payload_count += 1
