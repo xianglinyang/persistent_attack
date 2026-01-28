@@ -4,7 +4,7 @@
 
 # MS MARCO passages (recommended for general QA)
 python src/evaluate/rag/build_chroma_corpus.py \
-    --db_path /data2/xianglin/zombie_agent/gemini_db --preset msmarco \
+    --db_path /data2/xianglin/zombie_agent/gemini_db/msmarco --preset msmarco \
     --limit 3000 \
     --reset \
     --embedding_model all-MiniLM-L6-v2 \
