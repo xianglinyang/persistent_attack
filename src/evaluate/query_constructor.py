@@ -18,7 +18,7 @@ def data_reader(dataset_name_or_path: str, num_questions: int = 10):
 # ----------------------------------------------------------------------------
 # Queries Construction
 # ----------------------------------------------------------------------------
-def construct_exposure_queries(model_name: str = "openai/gpt-4o-mini", num_questions: int = 10, batch_size: int = 50):
+def construct_exposure_queries(model_name: str = "openai/gpt-4o-mini", num_questions: int = 10, batch_size: int = 20):
     """
     Generate exposure queries in batches to avoid LLM output length limitations.
     
