@@ -76,8 +76,8 @@ class RAGWebAgent(WebAgentBase):
     def _format_retrieval_as_memory_summary(
         self,
         retrieved: Any,
-        max_chars_per_doc: int = 50000,
-        max_total_chars: int = 100000,
+        max_chars_per_doc: int = 100000,
+        max_total_chars: int = 200000,
     ) -> str:
         """
         retrieved is usually: List[(id, doc, meta, dist)] from RAGMemory.retrieve / RAGMemoryView.retrieve
