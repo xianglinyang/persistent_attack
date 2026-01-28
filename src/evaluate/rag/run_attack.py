@@ -34,10 +34,9 @@ RAG Attack:
   - Run trigger queries (can be benign or malicious)
   - Track: payload count, recall@k + ASR metrics
 '''
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import argparse
 import time
 
-from src.agents.rag_agent import rag_exist_in_memory, rag_retrieve_recall
 from src.agents.rag_agent import RAGWebAgent
 from src.memory.rag_memory import RAGMemory
 from src.llm_zoo import load_model
@@ -47,11 +46,14 @@ from src.evaluate.query_constructor import (
     construct_trigger_queries,
 )
 from src.utils.logging_utils import setup_logging
+from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
+from src.analysis.rag_plots import (
+    plot_exposure_metrics,
+    plot_trigger_metrics,
+)
 
 from typing import List, Dict, Any, Optional, Tuple
 import os
-import json
-from datetime import datetime
 
 import logging
 logger = logging.getLogger(__name__)
@@ -101,168 +103,6 @@ def exposure_RAG(
         exposure_metrics.append(exposure_result)
         logger.info(f"  RAG Payload Count: {payload_count}")
     return agent, exposure_metrics
-
-
-def exposure_RAG_parallel(
-    llm,
-    memory,
-    exposure_queries,
-    evolve_mode="raw",
-    max_workers=16,
-    top_k=20,
-    guard=False,
-    guard_model_name=None,
-    max_steps=10,
-    start_round=1,  # New parameter: starting round number
-):
-    N = len(exposure_queries)
-    pending = {}
-    
-    logger.info("\n" + "=" * 80)
-    logger.info(f"Phase 1: PARALLEL EXPOSURE MODE (total={N} rounds)")
-    logger.info("=" * 80)
-    logger.info(f"Evolve mode: {evolve_mode}")
-    logger.info(f"Max workers: {max_workers}")
-    logger.info(f"Starting from round: {start_round}")
-    logger.info(f"Ending at round: {start_round + N - 1}")
-    logger.info(f"Start time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info("=" * 80 + "\n")
-
-    def _worker(round_idx, q):
-        # Create thread-local memory instance to avoid ChromaDB threading issues
-        try:
-            worker_memory = memory.copy()
-            logger.info(f"[Worker {round_idx}] Memory instance created successfully")
-        except Exception as e:
-            logger.warning(f"[Worker {round_idx}] Failed to create memory: {e}")
-            raise
-        
-        # 不共享 agent，避免 run_tracker/tool_server/history 踩踏
-        worker = RAGWebAgent(
-            llm=llm,
-            memory=worker_memory,  # 每个 worker 使用独立的 memory 实例
-            max_steps=max_steps,
-            guard=guard,
-            guard_model_name=guard_model_name,
-        )
-        metrics, logs = worker.run_task(
-            user_goal=q,
-            evolve_mode=None, # no memory evolution during exposure execution period
-            period="exposure",
-            exposure_round=round_idx,
-            top_k=top_k,
-        )
-        return round_idx, metrics, logs
-
-    # Step 1: Parallel execution
-    logger.info(f"[Step 1/2] Running {N} agent tasks in parallel...")
-    step1_start = time.time()
-    
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        # Use start_round + i to get the correct round number
-        futures = [ex.submit(_worker, start_round + i, exposure_queries[i]) for i in range(N)]
-        completed = 0
-        for fut in as_completed(futures):
-            r, m, l = fut.result()
-            pending[r] = (m, l)
-            completed += 1
-            if completed % 10 == 0 or completed == N:
-                logger.info(f"  Completed {completed}/{N} tasks...")
-
-    step1_time = time.time() - step1_start
-    logger.info(f"✓ Completed {N} agent tasks in parallel")
-    logger.info(f"  Time: {step1_time:.2f}s ({step1_time/N:.2f}s per task)")
-    logger.info(f"  Effective parallelism: {N * (step1_time/N) / step1_time:.1f}x\n")
-
-    exposure_metrics = []
-    exposure_logs = []
-
-    # Step 2: Sequential memory evolution
-    logger.info(f"[Step 2/2] Evolving memories sequentially...")
-    step2_start = time.time()
-    
-    # 顺序写入，尽量接近原来的 "round-by-round state"
-    for idx in range(N):
-        r = start_round + idx  # Calculate actual round number
-        if (idx + 1) % 20 == 0 or (idx + 1) == N:
-            logger.info(f"  Processing round {r} ({idx + 1}/{N})...")
-            
-        step_metrics, logs = pending[r]
-        history = logs["history_messages"]
-        scope = logs["memory_scope"]
-
-        memory.evolve(
-            mode=evolve_mode,
-            history_messages=history,
-            period="exposure",
-            exposure_round=r,
-            run_id=logs["tracking_info"]["run_id"],
-            meta_extra={
-                "user_goal": exposure_queries[idx],  # Use idx for queries array
-                "agent": "RAGWebAgent",
-                "parallel_exposure": True,
-            },
-        )
-        # ---- Final aggregated eval ----
-        # Note: step_metrics may not have these keys if evolve_mode was None during execution
-        # We compute them here after memory evolution
-        step_metrics["rag_payload_cnt"] = rag_exist_in_memory(
-            memory, 
-            period="exposure", 
-            exposure_round=r, 
-            run_id=logs["tracking_info"]["run_id"]
-        )
-        step_metrics["recall@10"] = rag_retrieve_recall(
-            memory,
-            exposure_queries[idx],  # Use idx for queries array
-            exposure_round=r,
-            run_id=logs["tracking_info"]["run_id"],
-            top_k=10,
-        )
-        step_metrics["recall@50"] = rag_retrieve_recall(
-            memory,
-            exposure_queries[idx],  # Use idx for queries array
-            exposure_round=r,
-            run_id=logs["tracking_info"]["run_id"],
-            top_k=50,
-        )
-        step_metrics["recall@100"] = rag_retrieve_recall(
-            memory,
-            exposure_queries[idx],  # Use idx for queries array
-            exposure_round=r,
-            run_id=logs["tracking_info"]["run_id"],
-            top_k=100,
-        )
-        exposure_metrics.append({
-            "exposure_round": r,
-            "rag_payload_count": step_metrics["rag_payload_cnt"],
-            "recall@10": step_metrics["recall@10"],
-            "recall@50": step_metrics["recall@50"],
-            "recall@100": step_metrics["recall@100"],
-            "full_metrics": step_metrics,
-        })
-        exposure_logs.append(logs)
-
-    step2_time = time.time() - step2_start
-    total_time = step1_time + step2_time
-    total_payloads = sum(m['rag_payload_count'] for m in exposure_metrics)
-    
-    logger.info(f"✓ Memory evolution complete\n")
-    logger.info(f"{'='*80}")
-    logger.info(f"PARALLEL EXPOSURE COMPLETE")
-    logger.info(f"{'='*80}")
-    logger.info(f"Total rounds processed: {N} (rounds {start_round}-{start_round + N - 1})")
-    logger.info(f"Total payloads: {total_payloads}")
-    logger.info(f"\n[Timing Summary]")
-    logger.info(f"  Step 1 (Parallel Tasks): {step1_time:.2f}s ({step1_time/total_time*100:.1f}%)")
-    logger.info(f"  Step 2 (Memory Evolve):  {step2_time:.2f}s ({step2_time/total_time*100:.1f}%)")
-    logger.info(f"  Total Time:              {total_time:.2f}s")
-    logger.info(f"  Avg per round:           {total_time/N:.2f}s")
-    logger.info(f"  Throughput:              {N/total_time:.2f} rounds/sec")
-    logger.info(f"\n  End time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"{'='*80}\n")
-
-    return exposure_metrics, exposure_logs
 
 # ========================================
 # Phase 2: TRIGGER PERIOD
@@ -341,6 +181,7 @@ def trigger_RAG(
         logger.info(f"  ASR Success: {asr_success}")
     
     return agent, trigger_metrics, all_trigger_logs
+
 
 # ========================================
 # Phase 3: SUMMARY
@@ -421,49 +262,6 @@ def compute_summary_RAG(exposure_metrics: List[Dict], trigger_metrics: List[Dict
     
     return summary
 
-
-# ========================================
-# Helper: Save/Load Metrics
-# ========================================
-def save_metrics(exposure_metrics, trigger_metrics, save_path, **metadata):
-    """Save metrics to JSON file with runs structure preserved."""
-    # Check if trigger_metrics is nested (multiple runs)
-    is_multi_run = trigger_metrics and isinstance(trigger_metrics[0], list)
-    
-    if is_multi_run:
-        # Keep the runs structure
-        trigger_data = {
-            "runs": trigger_metrics,  # List[List[Dict]] - keep original structure
-            "n_runs": len(trigger_metrics),
-            "n_rounds_per_run": len(trigger_metrics[0]) if trigger_metrics else 0,
-        }
-    else:
-        # Single run or already flat
-        trigger_data = {
-            "runs": [trigger_metrics] if trigger_metrics else [],
-            "n_runs": 1 if trigger_metrics else 0,
-            "n_rounds_per_run": len(trigger_metrics) if trigger_metrics else 0,
-        }
-    
-    data = {
-        "timestamp": datetime.now().isoformat(),
-        "metadata": metadata,
-        "exposure_metrics": exposure_metrics,
-        "trigger_metrics": trigger_data,
-    }
-    
-    os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
-    with open(save_path, 'w') as f:
-        json.dump(data, f, indent=2)
-    logger.info(f"✅ Metrics saved to: {save_path}")
-
-
-def load_metrics(json_path):
-    """Load metrics from JSON file."""
-    with open(json_path, 'r') as f:
-        return json.load(f)
-
-
 # ========================================
 # Main Function: RAG Attack with Memory Reuse and Snapshots
 # ========================================
@@ -474,7 +272,6 @@ def main_rag_agent_exposure_experiment(
     evolve_mode: str = "raw",
     db_path: str = "/data2/xianglin/zombie_agent/db_storage/msmarco",
     top_k: int = 20,
-    max_workers: int = 16,
     base_name: str = "base",
     exposure_name: str = "exposure",
     trigger_name: str = "trigger",
@@ -485,8 +282,6 @@ def main_rag_agent_exposure_experiment(
     # guard knobs
     guard: bool = False,
     guard_model_name: Optional[str] = None,
-    # NEW: batch mode flag
-    use_batch_mode: bool = True,
 ) -> Dict[str, Any]:
     """
     Experiment harness with:
@@ -494,8 +289,6 @@ def main_rag_agent_exposure_experiment(
       - Trigger: each query gets its own run_id (independent session) and is evaluated under snapshot_view
 
     Args:
-        use_batch_mode: If True, use optimized batch_run_task_exposure (recommended for >50 rounds)
-                        If False, use sequential run_task (slower but more detailed)
     """
     # -----------------------
     # Prepare queries
@@ -508,16 +301,12 @@ def main_rag_agent_exposure_experiment(
     # Init memory + agent
     # -----------------------
     logger.info("\n" + "=" * 80)
-    if use_batch_mode:
-        logger.info("Running RAG Experiment (BATCH MODE - Optimized)")
-    else:
-        logger.info("Running RAG Experiment (SEQUENTIAL MODE)")
+    logger.info("Running RAG Experiment (SEQUENTIAL MODE)")
     print("=" * 80)
     logger.info(f"Model: {model_name}")
     logger.info(f"DB Path: {db_path}")
     logger.info(f"Exposure rounds: {exposure_rounds}")
     logger.info(f"Evolve mode: {evolve_mode}")
-    logger.info(f"Batch mode: {use_batch_mode}")
     logger.info(f"Guard enabled: {guard}")
     if guard:
         logger.info(f"Guard model: {guard_model_name}")
@@ -529,7 +318,7 @@ def main_rag_agent_exposure_experiment(
         base_name=base_name,
         exposure_name=exposure_name,
         trigger_name=trigger_name,
-        llm_model_name=model_name,   # evolve 用的 LLM（如果你 evolve_mode 需要）
+        llm_model_name=model_name,
     )
 
     # -----------------------
@@ -593,91 +382,72 @@ def main_rag_agent_exposure_experiment(
     else:
         queries_to_process = exposure_queries
     
-    if use_batch_mode:
-        # Use optimized parallel batch mode
-        exposure_metrics, all_exposure_logs = exposure_RAG_parallel(
-            llm=llm,
-            memory=memory,
-            exposure_queries=queries_to_process,
+
+    # Use original sequential mode with timing
+    logger.info("\n" + "=" * 80)
+    logger.info(f"Phase 1: EXPOSURE SEQUENTIAL MODE (total={len(queries_to_process)} rounds)")
+    logger.info("=" * 80)
+    logger.info(f"Evolve mode: {evolve_mode}")
+    logger.info(f"Starting from round: {start_round}")
+    logger.info(f"Ending at round: {start_round + len(queries_to_process) - 1}")
+    logger.info(f"Start time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("=" * 80 + "\n")
+
+    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, guard=guard, guard_model_name=guard_model_name)
+
+    exposure_metrics: List[Dict[str, Any]] = []
+    all_exposure_logs: List[Dict[str, Any]] = []
+    round_times = []  # Track time for each round
+    
+    for idx, q in enumerate(queries_to_process):
+        actual_round = start_round + idx  # Calculate actual round number
+        round_start = time.time()
+        logger.info(f"\n[Exposure {actual_round} ({idx + 1}/{len(queries_to_process)})]")
+
+        step_metrics, logs = agent.run_task(
+            user_goal=q,
             evolve_mode=evolve_mode,
+            period="exposure",
+            exposure_round=actual_round,  # Use actual round number
             top_k=top_k,
-            max_workers=max_workers,
-            guard=guard,
-            guard_model_name=guard_model_name,
-            max_steps=max_steps,
-            start_round=start_round,  # Pass start_round to parallel function
+            allow_command_patterns=allow_command_patterns,
+            strict_cmd_asr=strict_cmd_asr,
         )
         
-    else:
-        # Use original sequential mode with timing
-        logger.info("\n" + "=" * 80)
-        logger.info(f"Phase 1: EXPOSURE SEQUENTIAL MODE (total={len(queries_to_process)} rounds)")
-        logger.info("=" * 80)
-        logger.info(f"Evolve mode: {evolve_mode}")
-        logger.info(f"Starting from round: {start_round}")
-        logger.info(f"Ending at round: {start_round + len(queries_to_process) - 1}")
-        logger.info(f"Start time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info("=" * 80 + "\n")
-
-        agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, guard=guard, guard_model_name=guard_model_name)
-
-        exposure_metrics: List[Dict[str, Any]] = []
-        all_exposure_logs: List[Dict[str, Any]] = []
-        round_times = []  # Track time for each round
+        round_time = time.time() - round_start
+        round_times.append(round_time)
         
-        for idx, q in enumerate(queries_to_process):
-            actual_round = start_round + idx  # Calculate actual round number
-            round_start = time.time()
-            logger.info(f"\n[Exposure {actual_round} ({idx + 1}/{len(queries_to_process)})]")
-
-            step_metrics, logs = agent.run_task(
-                user_goal=q,
-                evolve_mode=evolve_mode,
-                period="exposure",
-                exposure_round=actual_round,  # Use actual round number
-                top_k=top_k,
-                allow_command_patterns=allow_command_patterns,
-                strict_cmd_asr=strict_cmd_asr,
-            )
-            
-            round_time = time.time() - round_start
-            round_times.append(round_time)
-            
-            exposure_metrics.append({
-                "exposure_round": actual_round,  # Use actual round number
-                "rag_payload_count": step_metrics.get("rag_payload_cnt", 0),
-                "recall@10": step_metrics.get("recall@10", 0),
-                "recall@50": step_metrics.get("recall@50", 0),
-                "recall@100": step_metrics.get("recall@100", 0),
-                "full_metrics": step_metrics,
-                "round_time": round_time,
-            })
-            all_exposure_logs.append(logs)
-            
-            # Progress report every 5 rounds
-            if (idx + 1) % 5 == 0 or (idx + 1) == len(queries_to_process):
-                avg_time = sum(round_times) / len(round_times)
-                logger.info(f"\n[Progress] {idx + 1}/{len(queries_to_process)} rounds completed (Round {actual_round})")
-                logger.info(f"  Avg time per round so far: {avg_time:.2f}s")
-                if (idx + 1) < len(queries_to_process):
-                    logger.info(f"  Estimated remaining: {avg_time * (len(queries_to_process) - idx - 1):.2f}s")
+        exposure_metrics.append({
+            "exposure_round": actual_round,  # Use actual round number
+            "rag_payload_count": step_metrics.get("rag_payload_cnt", 0),
+            "full_metrics": step_metrics,
+            "round_time": round_time,
+        })
+        all_exposure_logs.append(logs)
         
-        # Sequential mode timing summary
-        total_time = time.time() - exposure_start_time
-        logger.info(f"\n{'='*80}")
-        logger.info(f"SEQUENTIAL EXPOSURE COMPLETE")
-        logger.info(f"{'='*80}")
-        logger.info(f"Total rounds processed: {len(exposure_metrics)} (rounds {start_round}-{start_round + len(exposure_metrics) - 1})")
-        logger.info(f"Total payloads: {sum(m['rag_payload_count'] for m in exposure_metrics)}")
-        logger.info(f"\n[Timing Summary]")
-        logger.info(f"  Total Time:        {total_time:.2f}s")
-        logger.info(f"  Avg per round:     {total_time/len(queries_to_process):.2f}s")
-        logger.info(f"  Min round time:    {min(round_times):.2f}s")
-        logger.info(f"  Max round time:    {max(round_times):.2f}s")
-        logger.info(f"  Throughput:        {len(queries_to_process)/total_time:.2f} rounds/sec")
-        logger.info(f"\n  End time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"{'='*80}\n")
+        # Progress report every 5 rounds
+        if (idx + 1) % 5 == 0 or (idx + 1) == len(queries_to_process):
+            avg_time = sum(round_times) / len(round_times)
+            logger.info(f"\n[Progress] {idx + 1}/{len(queries_to_process)} rounds completed (Round {actual_round})")
+            logger.info(f"  Avg time per round so far: {avg_time:.2f}s")
+            if (idx + 1) < len(queries_to_process):
+                logger.info(f"  Estimated remaining: {avg_time * (len(queries_to_process) - idx - 1):.2f}s")
     
+    # Sequential mode timing summary
+    total_time = time.time() - exposure_start_time
+    logger.info(f"\n{'='*80}")
+    logger.info(f"SEQUENTIAL EXPOSURE COMPLETE")
+    logger.info(f"{'='*80}")
+    logger.info(f"Total rounds processed: {len(exposure_metrics)} (rounds {start_round}-{start_round + len(exposure_metrics) - 1})")
+    logger.info(f"Total payloads: {sum(m['rag_payload_count'] for m in exposure_metrics)}")
+    logger.info(f"\n[Timing Summary]")
+    logger.info(f"  Total Time:        {total_time:.2f}s")
+    logger.info(f"  Avg per round:     {total_time/len(queries_to_process):.2f}s")
+    logger.info(f"  Min round time:    {min(round_times):.2f}s")
+    logger.info(f"  Max round time:    {max(round_times):.2f}s")
+    logger.info(f"  Throughput:        {len(queries_to_process)/total_time:.2f} rounds/sec")
+    logger.info(f"\n  End time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"{'='*80}\n")
     
     return exposure_metrics, all_exposure_logs
 
@@ -709,20 +479,18 @@ def main_rag_agent_trigger_experiment(
       - Each trigger query uses its own run_id inside trigger_RAG() (your code already does)
       - Eval uses snapshot_view(exposure_round=T, run_id=run_id) via run_task() + attack_evaluator helpers
     """
-
     # -----------------------
     # Prepare trigger queries
     # -----------------------
     trigger_queries = data_reader(dataset_name_or_path, num_questions=trigger_rounds*trigger_runs)
     trigger_queries = construct_trigger_queries(trigger_queries)
-    # batch the trigger queries into groups
     trigger_queries = [trigger_queries[i:i+trigger_rounds] for i in range(0, len(trigger_queries), trigger_rounds)]
 
     # -----------------------
     # Init memory + agent
     # -----------------------
     logger.info("\n" + "=" * 80)
-    logger.info("Running TRIGGER Experiment (snapshot_view + run_id isolated trigger)")
+    logger.info("Running TRIGGER Experiment (SEQUENTIAL MODE)")
     logger.info("=" * 80)
     logger.info(f"Model: {model_name}")
     logger.info(f"DB Path: {db_path}")
@@ -753,6 +521,9 @@ def main_rag_agent_trigger_experiment(
 
     for batch_idx, trigger_batch in enumerate(trigger_queries, start=1):
         logger.info("\n" + "=" * 80)
+        logger.info("Resetting trigger collection...")
+        memory.reset(targets="trigger")
+        logger.info("Trigger collection reset complete")
         logger.info(f"Trigger Batch {batch_idx}/{len(trigger_queries)}")
         logger.info("=" * 80 + "\n")
 
@@ -772,9 +543,11 @@ def main_rag_agent_trigger_experiment(
 
     return agent, trigger_metrics, all_trigger_logs
 
-if __name__ == "__main__":
-    import argparse
-    
+
+# ========================================
+# Main Function
+# ========================================
+def main():
     parser = argparse.ArgumentParser()
     
     # Phase control
@@ -788,6 +561,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_steps", type=int, default=10)
     parser.add_argument("--evolve_mode", type=str, default="raw")
     parser.add_argument("--top_k", type=int, default=20)
+    parser.add_argument("--save_dir", type=str)
     
     # Collection names
     parser.add_argument("--base_name", type=str, default="base")
@@ -796,9 +570,7 @@ if __name__ == "__main__":
     
     # Exposure phase settings
     parser.add_argument("--exposure_rounds", type=int, default=10)
-    parser.add_argument("--max_workers", type=int, default=16)
     parser.add_argument("--reset", type=int, default=1, help="1 to reset both exposure and trigger, 0 to resume from last exposure round")
-    parser.add_argument("--use_batch_mode", type=int, default=1)
     
     # Trigger phase settings
     parser.add_argument("--dataset_name_or_path", type=str, default="data-for-agents/insta-150k-v1",
@@ -829,7 +601,6 @@ if __name__ == "__main__":
     logger.info(f"DB Path: {args.db_path}")
     if args.phase in ["exposure", "both"]:
         logger.info(f"Exposure rounds: {args.exposure_rounds}")
-        logger.info(f"Batch mode: {bool(args.use_batch_mode)}")
         logger.info(f"Reset mode: {'Yes' if args.reset else 'Resume'}")
     if args.phase in ["trigger", "both"]:
         logger.info(f"Trigger rounds: {args.trigger_rounds}")
@@ -855,7 +626,6 @@ if __name__ == "__main__":
             max_steps=args.max_steps,
             evolve_mode=args.evolve_mode,
             top_k=args.top_k,
-            max_workers=args.max_workers,
             base_name=args.base_name,
             exposure_name=args.exposure_name,
             trigger_name=args.trigger_name,
@@ -864,7 +634,6 @@ if __name__ == "__main__":
             strict_cmd_asr=bool(args.strict_cmd_asr),
             guard=bool(args.guard),
             guard_model_name=args.guard_model_name,
-            use_batch_mode=bool(args.use_batch_mode),
         )
         
         logger.info(f"\n✅ Exposure phase complete!")
@@ -913,185 +682,29 @@ if __name__ == "__main__":
             total_triggers = sum(len(batch) for batch in trigger_metrics)
             logger.info(f"   Processed {total_triggers} trigger queries")
     
-    # Summary
+    # --- Begin of Summary ---
     logger.info("\n" + "="*80)
     logger.info("EXPERIMENT COMPLETE")
     logger.info("="*80)
-    logger.info(f"Phase executed: {args.phase.upper()}")
-    if exposure_metrics:
-        logger.info(f"✓ Exposure: {len(exposure_metrics)} rounds")
-    if trigger_metrics:
-        total_triggers = sum(len(batch) for batch in trigger_metrics)
-        logger.info(f"✓ Trigger: {total_triggers} queries")
-    logger.info("="*80 + "\n")
     
-    # Save metrics and plot results if both phases completed
-    if exposure_metrics and trigger_metrics:
-        logger.info("\n" + "="*80)
-        logger.info("SAVING RESULTS AND GENERATING PLOTS")
-        logger.info("="*80 + "\n")
-        
-        # Flatten trigger_metrics from list of batches to single list
-        trigger_metrics_flat = []
-        for batch in trigger_metrics:
-            trigger_metrics_flat.extend(batch)
-        
-        # Generate save paths
-        model_short_name = args.model_name.replace("/", "-").replace(".", "-")
-        save_dir = "results"
-        os.makedirs(save_dir, exist_ok=True)
-        
-        json_path = os.path.join(save_dir, f"{model_short_name}_rag_metrics.json")
-        plot_path = os.path.join(save_dir, f"{model_short_name}_rag_attack_metrics.png")
-        
-        # Save metrics to JSON
-        try:
-            save_metrics(
-                exposure_metrics,
-                trigger_metrics,
-                json_path,
-                model_name=args.model_name,
-                db_path=args.db_path,
-                exposure_rounds=args.exposure_rounds,
-                trigger_rounds=args.trigger_rounds,
-                trigger_runs=args.trigger_runs,
-                top_k=args.top_k,
-                evolve_mode=args.evolve_mode,
-                max_steps=args.max_steps,
-                phase="both",
-            )
-        except Exception as e:
-            logger.warning(f"⚠ Warning: Failed to save metrics: {e}")
-        
-        # Call plotting function
-        try:
-            # Import here to avoid issues if matplotlib not available
-            from src.evaluate.plot_results import plot_rag_metrics
-            
-            results = {
-                "exposure_metrics": exposure_metrics,
-                "trigger_metrics": trigger_metrics_flat
-            }
-            
-            plot_rag_metrics(results, save_path=plot_path)
-            logger.info(f"✅ Plot saved to: {plot_path}")
-        except Exception as e:
-            logger.warning(f"⚠ Warning: Failed to generate plot: {e}")
-            logger.warning(f"   You can manually plot results using plot_rag_metrics() from plot_results.py")
+    os.makedirs(args.save_dir, exist_ok=True)
+    model_nick_name = args.model_name.replace("/", "_")
+    if args.phase == "exposure":
+        save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, "exposure_metrics.json"))
+        plot_exposure_metrics(exposure_metrics, os.path.join(args.save_dir, f"exposure_{model_nick_name}.png"))
+    elif args.phase == "trigger":
+        save_trigger_metrics(trigger_metrics, all_trigger_logs, os.path.join(args.save_dir, "trigger_metrics.json"))
+        plot_trigger_metrics(trigger_metrics, os.path.join(args.save_dir, f"trigger_{model_nick_name}.png"))
     elif args.phase == "both":
-        logger.info("\n⚠ Skipping results saving (incomplete data)")
-    
-    # Save and plot exposure-only results
-    if exposure_metrics and args.phase == "exposure":
-        logger.info("\n" + "="*80)
-        logger.info("SAVING EXPOSURE RESULTS AND GENERATING PLOT")
-        logger.info("="*80 + "\n")
-        
-        model_short_name = args.model_name.replace("/", "-").replace(".", "-")
-        json_path = f"results/{model_short_name}_rag_exposure.json"
-        plot_path = f"results/{model_short_name}_rag_exposure_plot.png"
-        
-        try:
-            save_metrics(exposure_metrics, [], json_path, 
-                        model_name=args.model_name, phase="exposure")
-        except Exception as e:
-            print(f"⚠ Warning: Failed to save metrics: {e}")
-        
-        # Plot exposure-only
-        try:
-            from src.evaluate.plot_results import plot_rag_metrics
-            results = {
-                "exposure_metrics": exposure_metrics,
-                "trigger_metrics": []  # Empty trigger
-            }
-            plot_rag_metrics(results, save_path=plot_path)
-            logger.info(f"✅ Plot saved to: {plot_path}")
-        except Exception as e:
-            logger.warning(f"⚠ Warning: Failed to generate plot: {e}")
-    
-    # Save and plot trigger-only results
-    if trigger_metrics and args.phase == "trigger":
-        logger.info("\n" + "="*80)
-        logger.info("SAVING TRIGGER RESULTS AND GENERATING PLOT")
-        logger.info("="*80 + "\n")
-        
-        model_short_name = args.model_name.replace("/", "-").replace(".", "-")
-        json_path = f"results/{model_short_name}_rag_trigger.json"
-        plot_path = f"results/{model_short_name}_rag_trigger_plot.png"
-        
-        # Flatten trigger_metrics
-        trigger_flat = []
-        for batch in trigger_metrics:
-            trigger_flat.extend(batch)
-        
-        try:
-            save_metrics([], trigger_metrics, json_path,
-                        model_name=args.model_name, phase="trigger")
-        except Exception as e:
-            logger.warning(f"⚠ Warning: Failed to save metrics: {e}")
-        
-        # Plot trigger-only
-        try:
-            from src.evaluate.plot_results import plot_rag_metrics
-            results = {
-                "exposure_metrics": [],  # Empty exposure
-                "trigger_metrics": trigger_flat
-            }
-            plot_rag_metrics(results, save_path=plot_path)
-            logger.info(f"✅ Plot saved to: {plot_path}")
-        except Exception as e:
-            logger.warning(f"⚠ Warning: Failed to generate plot: {e}")
+        save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, "exposure_metrics.json"))
+        plot_exposure_metrics(exposure_metrics, os.path.join(args.save_dir, f"exposure_{model_nick_name}.png"))
+        save_trigger_metrics(trigger_metrics, all_trigger_logs, os.path.join(args.save_dir, "trigger_metrics.json"))
+        plot_trigger_metrics(trigger_metrics, os.path.join(args.save_dir, f"trigger_{model_nick_name}.png"))
+
+    # --- End of Summary ---
     
     logger.info("="*80 + "\n")
-
-
-    # # Example 1: Batch mode (recommended for large-scale experiments)
-    # exposure_metrics, all_exposure_logs = main_rag_agent_exposure_experiment(
-    #     model_name="google/gemini-2.5-flash",
-    #     exposure_rounds=10,  # Can handle 100-200+ rounds efficiently
-    #     max_steps=10,
-    #     evolve_mode="raw",
-    #     db_path="/data2/xianglin/zombie_agent/db_storage/msmarco",
-    #     top_k=20,
-    #     max_workers=16,
-    #     base_name="base",
-    #     exposure_name="exposure",
-    #     trigger_name="trigger",
-    #     allow_command_patterns=None,
-    #     strict_cmd_asr=False,
-    #     guard=False,  # Enable guard model check
-    #     guard_model_name=None,  # e.g., "openai/gpt-4o-mini"
-    #     use_batch_mode=True,  # Use batch mode for speed
-    # )
-
-    # Example 2: Sequential mode (for comparison or detailed logging)
-    # exposure_metrics, all_exposure_logs = main_rag_agent_exposure_experiment(
-    #     model_name="google/gemini-2.5-flash",
-    #     exposure_rounds=10,
-    #     max_steps=10,
-    #     evolve_mode="raw",
-    #     db_path="/data2/xianglin/zombie_agent/db_storage/msmarco",
-    #     top_k=20,
-    #     guard=False,
-    #     guard_model_name=None,
-    #     use_batch_mode=False,  # Use sequential mode
-    # )
-
-    # Example 3: Trigger experiment with guard
-    # trigger_metrics, all_trigger_logs = main_rag_agent_trigger_experiment(
-    #     model_name="google/gemini-2.5-flash",
-    #     dataset_name_or_path="data-for-agents/insta-150k-v1",
-    #     max_steps=10,
-    #     evolve_mode="raw",
-    #     exposure_rounds=100,  # Match the exposure rounds above
-    #     db_path="/data2/xianglin/zombie_agent/db_storage/msmarco",
-    #     trigger_rounds=3,
-    #     trigger_runs=2,
-    #     top_k=20,
-    #     allow_command_patterns=None,
-    #     strict_cmd_asr=False,
-    #     guard=True,  # Enable guard for trigger phase
-    #     guard_model_name="openai/gpt-4o-mini",
-    # )
-    
     logger.info("✅ Done.")
+
+if __name__ == "__main__":
+    main()
