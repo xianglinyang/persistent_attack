@@ -89,7 +89,9 @@ def plot_trigger_metrics(trigger_metrics: List[Dict[str, Any]], save_path: str):
         df_run = pd.DataFrame(run_data)
         df_run['run_id'] = i + 1
         all_dfs.append(df_run)
+    
     # sort by trigger_round and run_id
+    df = pd.concat(all_dfs, ignore_index=True)
     df = df.sort_values(by=["run_id", "trigger_round"])
 
     df['cum_exfiltration'] = df['exfiltration'].cumsum()
