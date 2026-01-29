@@ -342,6 +342,14 @@ class RAGMemory(MemoryBase):
                 where={"exposure_round": {"$lte": int(exposure_round)}},
                 include_meta=include_meta,
             )
+        else:
+            items += self._query(
+                self.exposure,
+                query=query,
+                n_results=k,
+                where=None,
+                include_meta=include_meta,
+            )
 
 
         items += self._query(
