@@ -264,31 +264,16 @@ def rag_count_recall(
     )
     
     if not retrieved:
-        return {
-            "payload_in_topk": False,
-            "payload_count": 0,
-            "recall": 0.0,
-            "position_first": None,
-            "position_all": [],
-            "total_retrieved": 0,
-        }
+        return 0
     
     # Check which retrieved docs contain payloads
-    payload_positions = []
     payload_count = 0
     
     for i, (doc_id, doc, meta, dist) in enumerate(retrieved, start=1):
         # Check metadata flag first (fast)
         has_payload = meta.get("has_payload", False)
-        
-        # # If no metadata flag, scan the document text (fallback)
-        # if not has_payload and doc:
-        #     flags = _payload_flags(doc)
-        #     has_payload = flags["has_payload"]
-        
         if has_payload:
             payload_count += 1
-            payload_positions.append(i)
             logger.info(f"[Recall] Payload found at position {i}: {doc[:80]}...")
     
     return payload_count
