@@ -171,18 +171,29 @@ class SlidingWindowWebAgent(WebAgentBase):
             # ---- Guard Model Check ----
             if self.guard_enabled:
                 guard_result = detect_attack(prompt, self.guard_model_name)
-                if guard_result["category"] != "benign":
-                    logger.info(f"[GUARD BLOCKED] Prompt blocked by guard model")
-                    logger.info(f"[GUARD REASON] {guard_result['explanation']}")
+                if type(guard_result) == dict:
+                    if guard_result["category"] != "benign":
+                        logger.info(f"[GUARD BLOCKED] Prompt blocked by guard model")
+                        logger.info(f"[GUARD REASON] {guard_result['explanation']}")
 
-                    final_answer = f"""[GUARD BLOCKED] Prompt blocked by guard model.\n\n [Type]: {guard_result['category']}\n\n [Reason]: {guard_result['explanation']}"""
-                    
-                    self.memory.add_memory(final_answer, "answer")
-                    step_log["observations"].append(final_answer)
-                    logs["steps"].append(step_log)
-                    break
-                else:
-                    logger.info(f"[GUARD PASSED] Prompt passed guard model check")
+                        final_answer = f"""[GUARD BLOCKED] Prompt blocked by guard model.\n\n [Type]: {guard_result['category']}\n\n [Reason]: {guard_result['explanation']}"""
+                        
+                        self.memory.add_memory(final_answer, "answer")
+                        step_log["observations"].append(final_answer)
+                        logs["steps"].append(step_log)
+                        break
+                    else:
+                        logger.info(f"[GUARD PASSED] Prompt passed guard model check")
+                elif type(guard_result) == str:
+                    if "benign" not in guard_result:
+                        logger.info(f"[GUARD BLOCKED] Prompt blocked by guard model")
+                        final_answer = f"""[GUARD BLOCKED] Prompt blocked by guard model.\n\n {guard_result}"""
+                        
+                        self.memory.add_memory(final_answer, "answer")
+                        step_log["observations"].append(final_answer)
+                        logs["steps"].append(step_log)
+                    else:   
+                        logger.info(f"[GUARD PASSED] Prompt passed guard model check")
             
             # ---- LLM ----
             llm_output = self.llm.invoke(prompt)
