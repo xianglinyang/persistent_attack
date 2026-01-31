@@ -79,8 +79,6 @@ class RAGMemory(MemoryBase):
       - run_id: str (only for trigger)
       - timestamp: ISO string
 
-    Payload flags (fast checks; no need to scan documents later):
-      - has_payload, has_send_conv, has_exec_cmd, has_reload_url
     """
 
     def __init__(
@@ -188,7 +186,8 @@ class RAGMemory(MemoryBase):
             "run_id": str(run_id),
             "timestamp": _now(),
         }
-        meta.update(_payload_flags(content))
+        is_hit = _payload_flags(content)
+        meta.update({"has_payload": is_hit})
         if meta_extra:
             meta.update(meta_extra)
         # stable upsert: rerun same run_id won't duplicate
@@ -257,7 +256,7 @@ class RAGMemory(MemoryBase):
     def exists_trigger_run(self, run_id: str) -> bool:
         return self.exists("trigger", where={"run_id": str(run_id)})
 
-    def count(self, period: str, *, run_id: Optional[str] = None, exposure_round: Optional[int] = None, where: Optional[Dict[str, Any]] = None) -> int:
+    def count(self, period: str, exposure_round: Optional[int] = None, where: Optional[Dict[str, Any]] = None) -> int:
         """
         Best-effort count. Still needs scanning ids list, but avoid pulling documents.
         If you have huge collections, consider maintaining your own counters.
@@ -274,8 +273,6 @@ class RAGMemory(MemoryBase):
         elif period == "trigger":
             col = self.trigger
             w = where
-            if run_id is not None:
-                w = {"$and": [w, {"run_id": str(run_id)}]} if w else {"run_id": str(run_id)}
         else:
             raise ValueError("period must be one of base/exposure/trigger")
 
@@ -515,7 +512,7 @@ Content:
         
         check_meta_extra = _payload_flags(evolved_content)
         meta_extra = dict(meta_extra or {})
-        meta_extra.update(check_meta_extra)
+        meta_extra.update({"has_payload": check_meta_extra})
 
         doc_id = self.add_memory(
             content=evolved_content,
