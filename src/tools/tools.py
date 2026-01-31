@@ -56,7 +56,11 @@ def search_ddg(query, num_results=2):
 def read_page(url: str, max_chars: int = 70000) -> str:
     try:
         # Fake a browser User-Agent to avoid 403 errors
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        # Disable automatic decompression to avoid brotli issues
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept-Encoding': 'gzip, deflate'  # Avoid brotli
+        }
         response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()
         
