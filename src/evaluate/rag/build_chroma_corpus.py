@@ -313,7 +313,7 @@ def ingest(
             "mem_type": "corpus",
             "timestamp": _now(),
             "source_ds": source_ds,
-            "has_payload": False,
+            "has_payload": 0,
         }
         # Merge extra metadata from dataset iterator
         meta.update(extra)
