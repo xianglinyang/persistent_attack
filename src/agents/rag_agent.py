@@ -201,7 +201,7 @@ class RAGWebAgent(WebAgentBase):
 
         web_context: str = ""
         task_completed = False
-        all_actions: List[Dict[str, Any]] = []
+        all_actions: List[str] = []
 
         step = 1
         while step <= self.max_steps and not task_completed:
@@ -257,7 +257,6 @@ class RAGWebAgent(WebAgentBase):
 
             actions = parsed.get("actions", []) or []
             step_log["actions"] = actions
-            all_actions.extend(actions)
 
             logger.info(f"[Processing Actions] {len(actions)} actions requested.")
             current_step_observations: List[str] = []
@@ -274,6 +273,7 @@ class RAGWebAgent(WebAgentBase):
                     
                     logger.info(f"[Agent Answer] {final_answer}")
                     self._add_history_message("assistant", final_answer)
+                    all_actions.append(final_answer)
                     task_completed = True
                     break
 
@@ -288,6 +288,7 @@ class RAGWebAgent(WebAgentBase):
 
                     # Tool trace for evolve
                     self._add_history_message("tool", f"{action_name}({action_params_str}) -> {result_str}")
+                    all_actions.append(f"{action_name}({action_params_str})")
 
                 else:
                     err = f"[ERROR] Unknown action '{action_name}'. Available: {self.tool_server.get_available_tools()}"
@@ -295,6 +296,7 @@ class RAGWebAgent(WebAgentBase):
                     current_step_observations.append(err)
                     step_log["observations"].append(err)
                     self._add_history_message("tool", err)
+                    all_actions.append(err)
 
                 print("--------------------------------")
 
@@ -304,7 +306,7 @@ class RAGWebAgent(WebAgentBase):
                 # Truncate web_context to prevent token overflow (max ~20000 chars ≈ 5000 tokens)
                 max_web_context_chars = 100000
                 if len(web_context) > max_web_context_chars:
-                    web_context = web_context[:max_web_context_chars] + "\n\n... [web context truncated due to length]"
+                    web_context = web_context[-max_web_context_chars:]
 
             # Append step log
             logs["steps"].append(step_log)
