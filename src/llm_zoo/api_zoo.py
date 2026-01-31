@@ -134,6 +134,8 @@ openrouter_models = [
 
     # X-AI
     "x-ai/grok-4",
+    "z-ai/glm-4.7-flash",
+    "moonshotai/kimi-k2.5"
 ]
 
 dashscope_models = [
@@ -321,6 +323,10 @@ implementation_to_name = {
 
     # OpenRouter X-AI models
     "x-ai/grok-4": "grok-4",
+
+    # OpenRouter Z-AI models
+    "z-ai/glm-4.7-flash": "glm-4.7-flash",
+    "moonshotai/kimi-k2.5": "kimi-k2.5",
 }
 
 def is_huggingface_model(model_name: str) -> bool:
