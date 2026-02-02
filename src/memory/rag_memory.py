@@ -154,7 +154,7 @@ class RAGMemory(MemoryBase):
     def add_base(self, content: str, meta_extra: Optional[Dict[str, Any]] = None):
         _id = _stable_id("base", content)
         meta = {"period": "base", "mem_type": "corpus", "timestamp": _now()}
-        meta.update(_payload_flags(content))
+        meta.update({"has_payload": int(_payload_flags(content))})
         if meta_extra:
             meta.update(meta_extra)
         # base is shared corpus; stable upsert is fine
@@ -170,7 +170,7 @@ class RAGMemory(MemoryBase):
             "exposure_round": int(exposure_round),
             "timestamp": _now(),
         }
-        meta.update(_payload_flags(content))
+        meta.update({"has_payload": int(_payload_flags(content))})
         if meta_extra:
             meta.update(meta_extra)
         # stable upsert prevents rerun explosion; safe if exposure_round defines checkpoint semantics
@@ -187,7 +187,7 @@ class RAGMemory(MemoryBase):
             "timestamp": _now(),
         }
         is_hit = _payload_flags(content)
-        meta.update({"has_payload": is_hit})
+        meta.update({"has_payload": int(is_hit)})
         if meta_extra:
             meta.update(meta_extra)
         # stable upsert: rerun same run_id won't duplicate
