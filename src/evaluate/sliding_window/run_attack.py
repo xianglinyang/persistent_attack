@@ -265,7 +265,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", type=str, default="results")
     args = parser.parse_args()
 
-    setup_logging(task_name=f"sliding_window_attack_{args.model_name}")
+    setup_logging(task_name=f"sliding_window_attack_{args.model_name.replace('/', '_')}")
 
     main_sliding_window_agent_attack(
         model_name=args.model_name,

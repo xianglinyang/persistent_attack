@@ -1,10 +1,10 @@
 #!/bin/bash
 
-MODEL_NAME="google/gemini-2.5-flash"
+MODEL_NAME="z-ai/glm-4.7-flash"
 DATASET_NAME_OR_PATH="data-for-agents/insta-150k-v1"
 EXPOSURE_ROUNDS=3
-TRIGGER_ROUNDS=5
-TRIGGER_RUNS=2
+TRIGGER_ROUNDS=30
+TRIGGER_RUNS=1
 WINDOW_SIZE=30
 MAX_STEPS=10
 GUARD=0
@@ -21,4 +21,4 @@ python -m src.evaluate.sliding_window.run_attack \
     --max_steps $MAX_STEPS \
     --guard $GUARD \
     --guard_model_name $GUARD_MODEL_NAME \
-    --save_dir .
+    --save_dir /data2/xianglin/zombie_agent/sliding_window/
