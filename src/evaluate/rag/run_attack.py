@@ -329,7 +329,7 @@ def main_rag_agent_exposure_experiment(
     if reset:
         # Reset both exposure and trigger
         logger.info("\n[Reset Mode] Resetting both exposure and trigger collections...")
-        memory.reset(targets="both")
+        memory.reset(targets="exposure")
         logger.info("✓ Reset complete. Starting from round 1.\n")
     else:
         # Resume mode: only reset trigger, continue from last exposure round
