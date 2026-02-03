@@ -144,7 +144,7 @@ class SlidingWindowWebAgent(WebAgentBase):
        
         web_context: str = ""
         task_completed = False
-        all_actions: List[Dict[str, Any]] = []
+        all_actions: List[str] = []
         
         step = 1
         while step <= self.max_steps and not task_completed:
@@ -202,10 +202,11 @@ class SlidingWindowWebAgent(WebAgentBase):
             thought = parsed.get("thought", "")
             step_log["thought"] = thought
             logger.info(f"[Agent Thought] {thought}")
+            if thought:
+                self.memory.add_memory(thought, "thought")
             
             actions = parsed.get("actions", [])
             step_log["actions"] = actions
-            all_actions.extend(actions)
 
             # Process each action in the list
             logger.info(f"[Processing Actions] {len(actions)} actions requested.")
@@ -219,37 +220,43 @@ class SlidingWindowWebAgent(WebAgentBase):
                 # Handle answer action (terminal action)
                 if action_name == "answer":
                     answer = action.get("answer", "")
-                    logger.info(f"[Agent Action] Answer: {answer}")
-                    
-                    self.memory.add_memory(f"answer: {answer}", "answer")
-                    step_log["observations"].append(f"Answer: {answer}")
+                    step_log["observations"].append(answer)
                     step_log["task_completed"] = True
+                    
+                    logger.info(f"[Agent Answer] {answer}")
+                    self.memory.add_memory(f"answer: {answer}", "answer")
                     task_completed = True
+                    all_actions.append(answer)
                     break
                 
                 # Handle all other actions via tool server
                 if action_name in self.tool_server.get_available_tools():
-                    # Log the action with its parameters
-                    action_params_str = ", ".join([f"{k}={v}" for k, v in action.items() if k != "action"])
-                    print(f"[Agent Action] {action_name.capitalize()}: {action_params_str}")
-                    
                     # Execute the tool
                     result = self.tool_server.execute(action_name, action)
+                    result_str = str(result)
                     current_step_observations.append(result)  # Collect observation
                     step_log["observations"].append(result)
+
+                    logger.info(f"[Observation] {result_str[:200]}{'...' if len(result_str) > 200 else ''}")
                     
                     # Add to memory
                     self.memory.add_memory(f"{action_name}: {action_params_str}", "action")
                     self.memory.add_memory(result, "observation")
-                    logger.info(f"[Observation] {result[:200]}{'...' if len(result) > 200 else ''}")
+                    all_actions.append(f"{action_name}({action_params_str})")
                 else:
                     err_msg = f"[ERROR] Unknown action '{action_name}'. Available: {self.tool_server.get_available_tools()}"
                     logger.info(err_msg)
                     step_log["observations"].append(err_msg)
+                    all_actions.append(err_msg)
+                    self.memory.add_memory(err_msg, "error")
             
             # Update web_context with all observations from this step
             if current_step_observations:
                 web_context = "\n\n---\n\n".join(current_step_observations)
+                # Truncate web_context to prevent token overflow (max ~20000 chars ≈ 5000 tokens)
+                max_web_context_chars = 100000
+                if len(web_context) > max_web_context_chars:
+                    web_context = web_context[-max_web_context_chars:]
             
             # Append step log
             logs["steps"].append(step_log)

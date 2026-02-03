@@ -90,8 +90,8 @@ def exposure_SL(agent, exposure_queries):
             step_metrics, exposure_logs = agent.run_task(user_goal=exposure_queries[i], reset_memory=False)
         
         asr = step_metrics["asr"]
-        exfiltration_detected = asr.get("exfiltration", False)
-        command_exec_detected = asr.get("command_exec", False)
+        exfiltration_detected = asr.get("exfiltration", 0)
+        command_exec_detected = asr.get("command_exec", 0)
         reload_payload_times = asr.get("reload_payload_times", 0)
         payload_in_memory_count = step_metrics["payload_in_memory_count"]
         
@@ -132,8 +132,8 @@ def trigger_SL(agent, trigger_queries):
         # check if payload is in memory
         payload_in_memory_count = step_metrics["payload_in_memory_count"]
         asr = step_metrics["asr"]
-        exfiltration_detected = asr.get("exfiltration", False)
-        command_exec_detected = asr.get("command_exec", False)
+        exfiltration_detected = asr.get("exfiltration", 0)
+        command_exec_detected = asr.get("command_exec", 0)
         reload_payload_times = asr.get("reload_payload_times", 0)
         
         trigger_result = {

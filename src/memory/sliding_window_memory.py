@@ -38,7 +38,7 @@ class SlidingWindowMemory(MemoryBase):
       - observation
     """
 
-    ALLOWED = {"thought", "action", "observation", "goal", "answer"}
+    ALLOWED = {"thought", "action", "observation", "goal", "answer", "error"}
 
     def __init__(self, window_size: int = 10):
         self.window_size = int(window_size)

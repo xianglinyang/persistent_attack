@@ -106,9 +106,7 @@ def sliding_window_count_payload(
     sliding_window_memory: Any,
 ) -> int:
     # 1. 兼容获取 buffer (list / deque / etc)
-    buf = getattr(sliding_window_memory, "memory", None)
-    if buf is None:
-        buf = getattr(sliding_window_memory, "_buf", None)
+    buf = getattr(sliding_window_memory, "_buf", None)
     if buf is None:
         return 0
 
