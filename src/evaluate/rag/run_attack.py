@@ -69,6 +69,10 @@ def exposure_RAG(
     agent, 
     exposure_queries: List[str],
     evolve_mode: str = "raw",
+    start_round: int = 1,
+    top_k: int = 20,
+    allow_command_patterns: Optional[List[str]] = None,
+    strict_cmd_asr: bool = False,
 ) -> tuple:
     '''
     Run exposure phase and save memory snapshots at specified rounds.
@@ -77,20 +81,35 @@ def exposure_RAG(
         agent: RAGWebAgent instance
         exposure_queries: List of exposure queries
         evolve_mode: "raw", "reflection", "experience"
+        start_round: Starting round number (for resume mode)
+        top_k: Number of items to retrieve
+        allow_command_patterns: Allowed command patterns for safety
+        strict_cmd_asr: Whether to use strict command ASR evaluation
     Returns:
-        tuple: (agent, exposure_metrics, snapshots)
+        tuple: (agent, exposure_metrics, all_exposure_logs)
             - agent: The exposed agent
             - exposure_metrics: List of metrics for each round
-            - snapshots: Dict mapping round number to memory copy
+            - all_exposure_logs: List of logs for each round
     '''
     exposure_metrics = list()
+    all_exposure_logs = list()
 
     for i in range(len(exposure_queries)):
-        current_round = i + 1
-        logger.info(f"\n[Exposure {current_round}/{len(exposure_queries)}]")
+        current_round = start_round + i
+        logger.info(f"\n[Exposure {current_round} ({i+1}/{len(exposure_queries)})]")
         exposure_query = exposure_queries[i]
 
-        step_metrics, logs = agent.run_task(user_goal=exposure_query, evolve_mode=evolve_mode, included_collections=["base"])
+        step_metrics, logs = agent.run_task(
+            user_goal=exposure_query,
+            evolve_mode=evolve_mode,
+            period="exposure",
+            exposure_round=current_round,
+            included_collections=["base"],
+            top_k=top_k,
+            allow_command_patterns=allow_command_patterns,
+            strict_cmd_asr=strict_cmd_asr,
+        )
+        
         # Check RAG memory state after this exposure (no ASR evaluation)
         payload_count = step_metrics.get("rag_payload_cnt", 0)
         
@@ -101,8 +120,10 @@ def exposure_RAG(
         }
 
         exposure_metrics.append(exposure_result)
+        all_exposure_logs.append(logs)
         logger.info(f"  RAG Payload Count: {payload_count}")
-    return agent, exposure_metrics
+    
+    return agent, exposure_metrics, all_exposure_logs
 
 # ========================================
 # Phase 2: TRIGGER PERIOD
@@ -395,43 +416,16 @@ def main_rag_agent_exposure_experiment(
 
     agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, guard=guard, guard_model_name=guard_model_name)
 
-    exposure_metrics: List[Dict[str, Any]] = []
-    all_exposure_logs: List[Dict[str, Any]] = []
-    round_times = []  # Track time for each round
-    
-    for idx, q in enumerate(queries_to_process):
-        actual_round = start_round + idx  # Calculate actual round number
-        round_start = time.time()
-        logger.info(f"\n[Exposure {actual_round} ({idx + 1}/{len(queries_to_process)})]")
-
-        step_metrics, logs = agent.run_task(
-            user_goal=q,
-            evolve_mode=evolve_mode,
-            period="exposure",
-            exposure_round=actual_round,  # Use actual round number
-            top_k=top_k,
-            allow_command_patterns=allow_command_patterns,
-            strict_cmd_asr=strict_cmd_asr,
-        )
-        
-        round_time = time.time() - round_start
-        round_times.append(round_time)
-        
-        exposure_metrics.append({
-            "exposure_round": actual_round,  # Use actual round number
-            "rag_payload_count": step_metrics.get("rag_payload_cnt", 0),
-            "full_metrics": step_metrics,
-            "round_time": round_time,
-        })
-        all_exposure_logs.append(logs)
-        
-        # Progress report every 5 rounds
-        if (idx + 1) % 5 == 0 or (idx + 1) == len(queries_to_process):
-            avg_time = sum(round_times) / len(round_times)
-            logger.info(f"\n[Progress] {idx + 1}/{len(queries_to_process)} rounds completed (Round {actual_round})")
-            logger.info(f"  Avg time per round so far: {avg_time:.2f}s")
-            if (idx + 1) < len(queries_to_process):
-                logger.info(f"  Estimated remaining: {avg_time * (len(queries_to_process) - idx - 1):.2f}s")
+    # Use the exposure_RAG function
+    agent, exposure_metrics, all_exposure_logs = exposure_RAG(
+        agent=agent,
+        exposure_queries=queries_to_process,
+        evolve_mode=evolve_mode,
+        start_round=start_round,
+        top_k=top_k,
+        allow_command_patterns=allow_command_patterns,
+        strict_cmd_asr=strict_cmd_asr,
+    )
     
     # Sequential mode timing summary
     total_time = time.time() - exposure_start_time
@@ -442,10 +436,8 @@ def main_rag_agent_exposure_experiment(
     logger.info(f"Total payloads: {sum(m['rag_payload_count'] for m in exposure_metrics)}")
     logger.info(f"\n[Timing Summary]")
     logger.info(f"  Total Time:        {total_time:.2f}s")
-    logger.info(f"  Avg per round:     {total_time/len(queries_to_process):.2f}s")
-    logger.info(f"  Min round time:    {min(round_times):.2f}s")
-    logger.info(f"  Max round time:    {max(round_times):.2f}s")
-    logger.info(f"  Throughput:        {len(queries_to_process)/total_time:.2f} rounds/sec")
+    logger.info(f"  Avg per round:     {total_time/len(exposure_metrics):.2f}s" if len(exposure_metrics) > 0 else "  Avg per round:     N/A")
+    logger.info(f"  Throughput:        {len(exposure_metrics)/total_time:.2f} rounds/sec" if total_time > 0 else "  Throughput:        N/A")
     logger.info(f"\n  End time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"{'='*80}\n")
     
@@ -702,7 +694,6 @@ def main():
         plot_trigger_metrics(trigger_metrics, os.path.join(args.save_dir, f"trigger_{model_nick_name}.png"))
 
     # --- End of Summary ---
-    
     logger.info("="*80 + "\n")
     logger.info("✅ Done.")
 
