@@ -268,6 +268,7 @@ class SlidingWindowWebAgent(WebAgentBase):
         # Metric Calculation
         metrics["asr"] = asr_eval(all_actions)
         metrics["payload_in_memory_count"] = sliding_window_count_payload(self.memory)
+        metrics["write_into_memory"] = metrics["payload_in_memory_count"] > 0
         logs["history_messages"] = self.memory._format_memory()
         logs["memory_scope"] = {
             "window_size": self.memory.window_size,
