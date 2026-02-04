@@ -228,8 +228,28 @@ class RAGMemory(MemoryBase):
             return self.add_trigger(content=content, mem_type=mem_type, run_id=run_id, meta_extra=meta_extra)
 
         raise ValueError(f"Invalid period: {period}. Must be 'base', 'exposure', or 'trigger'")
-
     
+    def get_by_doc_id(self, doc_id: str) -> Optional[Tuple[str, str, Dict[str, Any], float]]:
+        """
+        Get a document by its ID from any collection.
+        Returns: (id, document, metadata, distance) or None if not found
+        """
+        for collection in [self.base, self.exposure, self.trigger]:
+            try:
+                result = collection.get(ids=[doc_id], include=["documents", "metadatas"])
+                if result and result.get("ids") and len(result["ids"]) > 0:
+                    # Extract data from result dict
+                    _id = result["ids"][0]
+                    doc = result["documents"][0]
+                    meta = result["metadatas"][0] if result.get("metadatas") else {}
+                    # get() doesn't return distances, set to 0.0
+                    dist = 0.0
+                    return (_id, doc, meta, dist)
+            except Exception as e:
+                logger.debug(f"Error querying collection for doc_id {doc_id}: {e}")
+                continue
+        return None
+
     # ---------- Fast exists / count ----------
     def exists(self, period: str, *, where: Optional[Dict[str, Any]] = None) -> bool:
         """

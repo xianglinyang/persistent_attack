@@ -327,8 +327,9 @@ class RAGWebAgent(WebAgentBase):
         }
 
         # For metrics calculation
+        doc_id = None
         if task_completed and evolve_mode is not None:
-            self.memory.evolve(
+            doc_id = self.memory.evolve(
                 mode=evolve_mode,
                 history_messages=self.history_messages,
                 period=period,
@@ -361,6 +362,17 @@ class RAGWebAgent(WebAgentBase):
             exposure_round=exposure_round,
             top_k=100,
         )
+
+        if doc_id:
+            doc_content = self.memory.get_by_doc_id(doc_id)
+            if doc_content:
+                meta_data = doc_content[2]
+                has_payload = meta_data.get("has_payload", 0)
+                metrics["write_into_memory"] = has_payload >0
+            else:
+                metrics["write_into_memory"] = False
+        else:
+            metrics["write_into_memory"] = False
         
         logs["history_messages"] = self.history_messages
         logs["memory_scope"] = {
