@@ -200,7 +200,7 @@ def rag_count_recall(
     retrieved = rag_memory.retrieve(
         query=query,
         exposure_round=exposure_round,
-        include_base=True,
+        included_collections=["base", "exposure", "trigger"],
         k=top_k,
         include_meta=True,
     )

@@ -308,7 +308,7 @@ class RAGMemory(MemoryBase):
         self,
         query: str,
         exposure_round: Optional[int] = None,
-        include_base: bool = True,
+        included_collections: List[str] = ["base", "exposure", "trigger"],
         k: int = 20,
         include_meta: bool = True,
     ) -> List[Tuple[str, str, Dict[str, Any], float]]:
@@ -322,7 +322,7 @@ class RAGMemory(MemoryBase):
         """
         items: List[Tuple[str, str, Dict[str, Any], float]] = []
 
-        if include_base:
+        if "base" in included_collections:
             items += self._query(
                 self.base,
                 query=query,
@@ -330,32 +330,33 @@ class RAGMemory(MemoryBase):
                 where=None,
                 include_meta=include_meta,
             )
+        if "exposure" in included_collections:
+            if exposure_round is not None:
+                items += self._query(
+                    self.exposure,
+                    query=query,
+                    n_results=k,
+                    where={"exposure_round": {"$lte": int(exposure_round)}},
+                    include_meta=include_meta,
+                )
+            else:
+                items += self._query(
+                    self.exposure,
+                    query=query,
+                    n_results=k,
+                    where=None,
+                    include_meta=include_meta,
+                )
 
-        if exposure_round is not None:
+
+        if "trigger" in included_collections:
             items += self._query(
-                self.exposure,
-                query=query,
-                n_results=k,
-                where={"exposure_round": {"$lte": int(exposure_round)}},
-                include_meta=include_meta,
-            )
-        else:
-            items += self._query(
-                self.exposure,
+                self.trigger,
                 query=query,
                 n_results=k,
                 where=None,
                 include_meta=include_meta,
             )
-
-
-        items += self._query(
-            self.trigger,
-            query=query,
-            n_results=k,
-            where=None,
-            include_meta=include_meta,
-        )
 
         return _merge_topk(items, k)
 

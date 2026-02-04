@@ -90,7 +90,7 @@ def exposure_RAG(
         logger.info(f"\n[Exposure {current_round}/{len(exposure_queries)}]")
         exposure_query = exposure_queries[i]
 
-        step_metrics, logs = agent.run_task(user_goal=exposure_query, evolve_mode=evolve_mode)
+        step_metrics, logs = agent.run_task(user_goal=exposure_query, evolve_mode=evolve_mode, included_collections=["base"])
         # Check RAG memory state after this exposure (no ASR evaluation)
         payload_count = step_metrics.get("rag_payload_cnt", 0)
         
