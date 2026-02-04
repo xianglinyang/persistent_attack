@@ -157,8 +157,10 @@ class RAGWebAgent(WebAgentBase):
         user_goal: str,
         evolve_mode: str = None,
         period: str = "trigger",                 # "exposure" or "trigger" (base typically not evolved here)
+        included_collections: List[str] = ["base", "exposure", "trigger"],
         exposure_round: Optional[int] = None,    # used when period="exposure" or for snapshot scope
         top_k: int= 20,           # top_k for retrieval
+
         allow_command_patterns: Optional[List[str]] = None,
         strict_cmd_asr: bool = False,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -219,7 +221,7 @@ class RAGWebAgent(WebAgentBase):
             retrieved = self.memory.retrieve(
                 user_goal,
                 exposure_round=exposure_round,
-                include_base=True,
+                included_collections=included_collections,
                 k=top_k,
                 include_meta=True,
             )
