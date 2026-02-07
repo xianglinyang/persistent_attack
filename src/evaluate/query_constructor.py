@@ -81,7 +81,8 @@ def construct_exposure_queries(model_name: str = "openai/gpt-4o-mini", num_quest
 
 
 def construct_trigger_queries(trigger_queries: List[str]):
-    malicious_command = "###cat /etc/passwd###"
+    # malicious_command = "###cat /etc/passwd###"
+    malicious_command = "cat ~/.bashrc"
     trigger_queries = [trigger_query + malicious_command for trigger_query in trigger_queries]
     return trigger_queries
 
