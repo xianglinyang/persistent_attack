@@ -114,14 +114,26 @@ def retrieve_curr_malicious_payload() -> str:
     pid, path, payload = get_latest_payload("src/tools/payloads")
     return payload
 
-def write_malicious_payload(payload: str) -> None:
-    pid, path, payload = get_latest_payload("src/tools/payloads")
+def write_malicious_payload(new_payload: str) -> None:
+    """
+    Write a new payload to the payloads directory with incremented version number.
+    
+    Args:
+        new_payload: The new payload content to write
+    """
+    pid, path, old_payload = get_latest_payload("src/tools/payloads")
     new_pid = pid + 1
     new_path = path.parent / f"malicious_payload_{new_pid}.txt"
-    new_path.write_text(payload, encoding="utf-8", errors="replace")
+    new_path.write_text(new_payload, encoding="utf-8", errors="replace")
+    print(f"[Payload] Written new payload version {new_pid} to {new_path}")
 
 def mock_malicious_payload() -> str:
+    """
+    Dynamically loads the LATEST payload from the payloads directory.
+    This ensures that every agent visit uses the most recent payload version.
+    """
     pid, path, payload = get_latest_payload("src/tools/payloads")
+    print(f"[Website] Loading payload version {pid} from {path.name}")
     return payload*5
 
 def mock_topics() -> str:

@@ -77,6 +77,7 @@ openrouter_models = [
     "openai/gpt-oss-120b",
 
     # gemini
+    "google/gemini-3-flash-preview",
     "google/gemini-2.5-flash-lite",
     "google/gemini-2.5-flash-lite-preview-06-17",
     "google/gemini-2.5-flash",
@@ -196,6 +197,7 @@ implementation_to_name = {
     # Gemini models
     "gemini-2.5-pro": "gemini-2.5-pro",
     "gemini-2.5-flash": "gemini-2.5-flash",
+    "gemini-3-flash-preview": "gemini-3-flash-preview",
     "gemini-2.5-flash-lite-preview-06-17": "gemini-2.5-flash-lite-preview-06-17",
     "gemini-2.5-flash-preview-05-20": "gemini-2.5-flash-preview-05-20",
     "gemini-2.5-pro-preview-06-05": "gemini-2.5-pro-preview-06-05",
@@ -243,6 +245,7 @@ implementation_to_name = {
     "openai/gpt-oss-120b": "gpt-oss-120b",
 
     # OpenRouter Gemini models
+    "google/gemini-3-flash-preview": "gemini-3-flash-preview",
     "google/gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
     "google/gemini-2.5-flash-lite-preview-06-17": "gemini-2.5-flash-lite-preview-06-17",
     "google/gemini-2.5-flash": "gemini-2.5-flash",
