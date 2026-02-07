@@ -140,10 +140,8 @@ def mock_topics() -> str:
     proxy_queries = get_proxy_data(num=2000)
     return random.choice(proxy_queries)
 
-
 def read_malicious(url: str) -> str:
-    return mock_benign_webpage_content() + mock_topics() + mock_malicious_payload()
-
+    return mock_topics() + mock_benign_webpage_content() + mock_malicious_payload()
 
 if __name__ == "__main__":
     payload = retrieve_curr_malicious_payload()
