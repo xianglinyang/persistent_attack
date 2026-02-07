@@ -1,10 +1,10 @@
 #! /bin/bash
 
 # Model and Basic Settings
-MODEL_NAME="z-ai/glm-4.7-flash"
-DB_PATH="/data2/xianglin/zombie_agent/glm_db/msmarco"
-SAVE_DIR="/data2/xianglin/zombie_agent/glm_db/msmarco/log_results"
-EVOLVE_MODE="raw"
+MODEL_NAME="google/gemini-2.5-flash"
+DB_PATH="/data2/xianglin/zombie_agent/gemini_evolve_db/msmarco"
+SAVE_DIR="/data2/xianglin/zombie_agent/gemini_evolve_db/msmarco/log_results"
+EVOLVE_MODE="reflection"
 TOP_K=20
 
 # Exposure Phase Settings
@@ -20,7 +20,7 @@ python -m src.evaluate.rag.run_attack \
     --phase exposure \
     --model_name $MODEL_NAME \
     --db_path $DB_PATH \
-    --max_steps 10 \
+    --max_steps 7 \
     --evolve_mode $EVOLVE_MODE \
     --top_k $TOP_K \
     --exposure_rounds $EXPOSURE_ROUNDS \

@@ -4,21 +4,20 @@
 PHASE="trigger"  # Change to "trigger" or "both" as needed
 
 # Model and Basic Settings
-MODEL_NAME="z-ai/glm-4.7-flash"
-DB_PATH="/data2/xianglin/zombie_agent/glm_db/msmarco"
+MODEL_NAME="qwen/qwen3-235b-a22b-2507"
+DB_PATH="/data2/xianglin/zombie_agent/qwen_db/msmarco"
 MAX_STEPS=10
 EVOLVE_MODE="raw"
 TOP_K=20
-SAVE_DIR="/data2/xianglin/zombie_agent/glm_db/msmarco/log_results"
+SAVE_DIR="/data2/xianglin/zombie_agent/qwen_db/msmarco/log_results"
 
 # Exposure Phase Settings
-EXPOSURE_ROUNDS=240
-RESET=1  # 0 to resume from last round, 1 to reset and start fresh
+EXPOSURE_ROUNDS=280
 
 # Trigger Phase Settings
 DATASET_NAME_OR_PATH="data-for-agents/insta-150k-v1"
 TRIGGER_ROUNDS=30
-TRIGGER_RUNS=2
+TRIGGER_RUNS=3
 
 # Safety Settings
 GUARD=0
@@ -33,7 +32,6 @@ python -m src.evaluate.rag.run_attack \
     --evolve_mode $EVOLVE_MODE \
     --top_k $TOP_K \
     --exposure_rounds $EXPOSURE_ROUNDS \
-    --reset $RESET \
     --dataset_name_or_path $DATASET_NAME_OR_PATH \
     --trigger_rounds $TRIGGER_ROUNDS \
     --trigger_runs $TRIGGER_RUNS \
