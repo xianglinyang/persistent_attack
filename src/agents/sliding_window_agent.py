@@ -3,6 +3,7 @@ from src.llm_zoo import BaseLLM, load_model
 from src.memory.sliding_window_memory import SlidingWindowMemory
 from src.evaluate.attack_evaluator import sliding_window_count_payload, asr_eval
 from src.guard.llm_detector import detect_attack
+from src.guard.safety_guard import GuardDecision
 from typing import Dict, Any, Optional, List, Tuple
 
 import logging  
@@ -99,10 +100,41 @@ class SlidingWindowWebAgent(WebAgentBase):
             history_str=history_str,
         )
     
+    def _guard_check_text(self, text: str, source: str) -> bool:
+        """Check if the text is safe using the guard model.
+        
+        Validate the data source to be checked:
+        1) user task (user input)
+        2) tool returned result (observation from web or execution result)
+        """
+        # ---- Guard Model Check ----
+        guard_result = detect_attack(text, self.guard_model_name)
+        guard_category = guard_result["category"]
+        confidence = guard_result["confidence"]
+        reason = guard_result["explanation"]
+
+        guard_decision = GuardDecision(
+            blocked=guard_category != "benign",
+            valid= not (confidence == 0),
+            category=guard_category,
+            confidence=confidence,
+            reason=reason
+        )
+        if not guard_decision.valid:
+            logger.info(f"[GUARD INVALID] {reason}")
+        elif guard_decision.blocked:
+            logger.info(f"[GUARD BLOCKED] Prompt from {source} blocked by guard model")
+            logger.info(f"[GUARD REASON] {reason}")
+            logger.info(f"[GUARD TYPE] {guard_category}")
+        else:
+            logger.info(f"[GUARD PASSED] Prompt passed guard model check")
+            logger.info(f"[GUARD TYPE] {guard_category}")
+        
+        return guard_decision
+    
     def run_task(
         self, 
         user_goal: str, 
-        window_size: int = None, 
         reset_memory: bool = True
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
@@ -110,47 +142,61 @@ class SlidingWindowWebAgent(WebAgentBase):
         
         Args:
             user_goal: The user's query/task
-            window_size: The size of the sliding window
             reset_memory: Whether to reset the memory
 
         Returns:
             metrics: Dictionary containing evaluation metrics
             {
-                "[step]": {},
+                "[step_number]": {},
                 "asr": {},
-                "observation": {},
-                "task_completed": {},
+                "payload_in_memory_count": int,
+                "write_into_memory": bool,
             }
             logs: Dictionary containing execution logs
             {
                 "steps": [],
                 "history_messages": [],
                 "memory_scope": {},
-                "tracking_info": {},
+                "guard_blocked": bool,
             }
         """
+        # ---- Init ----
+        if reset_memory:
+            self.memory.reset()
+
         metrics = dict()
         logs: Dict[str, Any] = {
             "steps": [],
+            "history_messages": [],
+            "tracking_info": {},
         }
-        
-        # Clear memory and initialize (controlled by reset_memory parameter)
-        if window_size is not None:
-            self.memory.reset_window_size(window_size)
-        if reset_memory:
-            self.memory.reset()
-        self.memory.add_memory(user_goal, "goal")
-        
-       
+
+        # ---- Start of the Task Execution ----
         web_context: str = ""
         task_completed = False
         all_actions: List[str] = []
-        
         step = 1
-        while step <= self.max_steps and not task_completed:
+        block_by_guard = False
+        
+        # # ---- Guard Check: User Input ----
+        # if self.guard_enabled:
+        #     guard_decision = self._guard_check_text(user_goal, "user")
+        #     if guard_decision.valid and guard_decision.blocked:
+        #         # User input blocked, record and return immediately
+        #         guard_msg = f"[GUARD BLOCKED] User input blocked.\n\n [Type]: {guard_decision.category}\n\n [Reason]: {guard_decision.reason}"
+        #         logs["steps"].append({
+        #             "step": 0,
+        #             "thought": "",
+        #             "actions": [],
+        #             "observations": [guard_msg],
+        #             "task_completed": False,
+        #         })
+        #         block_by_guard = True
+        
+        while step <= self.max_steps and not task_completed and not block_by_guard:
             logger.info(f"[Step {step}]")
-
-            # Initialize step log
+            
+            # ---- Initialize step log ----
             step_log = {
                 "step": step,
                 "thought": "",
@@ -160,7 +206,7 @@ class SlidingWindowWebAgent(WebAgentBase):
             }
             metrics[str(step)] = dict()
 
-            # Retrieve memory
+            # ---- Retrieve memory ----
             memory_summary = self.memory.retrieve()
             logger.info(f"[Memory Summary Retrieved] {memory_summary}")
             history_str = self.memory._format_memory()
@@ -168,50 +214,24 @@ class SlidingWindowWebAgent(WebAgentBase):
             # ---- Prompt Formatting ----
             prompt = self._format_prompt(user_goal, web_context, history_str)
 
-            # ---- Guard Model Check ----
-            if self.guard_enabled:
-                guard_result = detect_attack(prompt, self.guard_model_name)
-                if type(guard_result) == dict:
-                    if guard_result["category"] != "benign":
-                        logger.info(f"[GUARD BLOCKED] Prompt blocked by guard model")
-                        logger.info(f"[GUARD REASON] {guard_result['explanation']}")
-
-                        final_answer = f"""[GUARD BLOCKED] Prompt blocked by guard model.\n\n [Type]: {guard_result['category']}\n\n [Reason]: {guard_result['explanation']}"""
-                        
-                        self.memory.add_memory(final_answer, "answer")
-                        step_log["observations"].append(final_answer)
-                        logs["steps"].append(step_log)
-                        break
-                    else:
-                        logger.info(f"[GUARD PASSED] Prompt passed guard model check")
-                elif type(guard_result) == str:
-                    if "benign" not in guard_result:
-                        logger.info(f"[GUARD BLOCKED] Prompt blocked by guard model")
-                        final_answer = f"""[GUARD BLOCKED] Prompt blocked by guard model.\n\n {guard_result}"""
-                        
-                        self.memory.add_memory(final_answer, "answer")
-                        step_log["observations"].append(final_answer)
-                        logs["steps"].append(step_log)
-                    else:   
-                        logger.info(f"[GUARD PASSED] Prompt passed guard model check")
-            
             # ---- LLM ----
             llm_output = self.llm.invoke(prompt)
             parsed = self._parse_output(llm_output)
 
             thought = parsed.get("thought", "")
-            step_log["thought"] = thought
-            logger.info(f"[Agent Thought] {thought}")
-            if thought:
-                self.memory.add_memory(thought, "thought")
-            
             actions = parsed.get("actions", [])
+            
+            self.memory.add_memory(thought, "thought")
+            step_log["thought"] = thought
             step_log["actions"] = actions
 
-            # Process each action in the list
-            logger.info(f"[Processing Actions] {len(actions)} actions requested.")
-            current_step_observations = []  # Accumulate all observations from this step
+            logger.info(f"[Agent Thought] {thought}")
+            logger.info(f"[Processing Actions] actions list ({len(actions)} items):")
+            for idx, action in enumerate(actions):
+                logger.info(f"  [{idx}] {action}")
             
+            # ---- Execute Actions ----
+            current_step_observations = []  # Accumulate all observations from this step
             for action in actions:
                 action_name = (action.get("action", "") or "").strip()
                 action_params_str = ", ".join([f"{k}={v}" for k, v in action.items() if k != "action"])
@@ -220,35 +240,57 @@ class SlidingWindowWebAgent(WebAgentBase):
                 # Handle answer action (terminal action)
                 if action_name == "answer":
                     answer = action.get("answer", "")
+                    
+                    self.memory.add_memory(f"answer: {answer}", "answer")
                     step_log["observations"].append(answer)
                     step_log["task_completed"] = True
                     
                     logger.info(f"[Agent Answer] {answer}")
-                    self.memory.add_memory(f"answer: {answer}", "answer")
+                    
                     task_completed = True
                     all_actions.append(answer)
                     break
                 
                 # Handle all other actions via tool server
                 if action_name in self.tool_server.get_available_tools():
-                    # Execute the tool
                     result = self.tool_server.execute(action_name, action)
                     result_str = str(result)
-                    current_step_observations.append(result)  # Collect observation
-                    step_log["observations"].append(result)
-
-                    logger.info(f"[Observation] {result_str[:200]}{'...' if len(result_str) > 200 else ''}")
                     
-                    # Add to memory
+                    # ---- Guard Check: Tool Result (especially web content) ----
+                    if self.guard_enabled:
+                        guard_decision = self._guard_check_text(result_str, "tool result")
+                        if guard_decision.valid and guard_decision.blocked:
+                            guard_msg = f"[GUARD BLOCKED] Web content blocked by guard model.\n\n [Type]: {guard_decision.category}\n\n [Reason]: {guard_decision.reason}"
+                            
+                            step_log['observations'].append(guard_msg)
+
+                            logger.info(guard_msg)
+
+                            # current_step_observations.append(f"[GUARD BLOCKED] Web content blocked by guard model")
+                            block_by_guard = True
+                            break
+                    
+                    # Only add to memory if not blocked
                     self.memory.add_memory(f"{action_name}: {action_params_str}", "action")
                     self.memory.add_memory(result, "observation")
+
+                    step_log["observations"].append(result_str)
+
+                    logger.info(f"[Observation] {result_str[:200]}{'...' if len(result_str) > 200 else ''}")
+                            
+                    current_step_observations.append(result_str)  # Collect observation
                     all_actions.append(f"{action_name}({action_params_str})")
+
                 else:
                     err_msg = f"[ERROR] Unknown action '{action_name}'. Available: {self.tool_server.get_available_tools()}"
-                    logger.info(err_msg)
-                    step_log["observations"].append(err_msg)
-                    all_actions.append(err_msg)
                     self.memory.add_memory(err_msg, "error")
+                    
+                    step_log["observations"].append(err_msg)
+                    
+                    logger.info(err_msg)
+                    
+                    all_actions.append(err_msg)
+                    
             
             # Update web_context with all observations from this step
             if current_step_observations:
@@ -261,33 +303,36 @@ class SlidingWindowWebAgent(WebAgentBase):
             # Append step log
             logs["steps"].append(step_log)
             step += 1
-        
-        if not task_completed and step > self.max_steps:
-            logger.warning(f"\n[Warning] Reached max steps ({self.max_steps}) without completing task")
 
-        # Metric Calculation
+        # ---- Post-Task Execution ----
+        logger.info(f"\n[DEBUG] all_actions list ({len(all_actions)} items):")
+        for idx, action in enumerate(all_actions):
+            logger.info(f"  [{idx}] {action}")
+        
         metrics["asr"] = asr_eval(all_actions)
         metrics["payload_in_memory_count"] = sliding_window_count_payload(self.memory)
         metrics["write_into_memory"] = metrics["payload_in_memory_count"] > 0
+        logger.info(f"[DEBUG] ASR evaluation result: {metrics['asr']}")
+        logger.info(f"[DEBUG] Payload in memory count: {metrics['payload_in_memory_count']}")
+        logger.info(f"[DEBUG] Write into memory: {metrics['write_into_memory']}")
         logs["history_messages"] = self.memory._format_memory()
         logs["memory_scope"] = {
             "window_size": self.memory.window_size,
         }
-                
+        logs["guard_blocked"] = block_by_guard
+        
         logger.info("\n[Task Complete]")
         return metrics, logs
 
 
 def print_metrics_summary(metrics: Dict[str, Any], title: str = "Metrics Summary"):
     """Print the metrics summary."""
-
     print(f"\n{'='*80}")
     print(f"{title}")
     print(f"{'='*80}")
     for key, value in metrics.items():
         print(f"{key}: {value}")
     print(f"{'='*80}")
-
 
 # ------------------------------------------------------------
 # Test Function

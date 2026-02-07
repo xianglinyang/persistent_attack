@@ -13,14 +13,14 @@ def plot_sliding_window_metrics(exposure_metrics: List[Dict[str, Any]], trigger_
         exposure_metrics: List[Dict[str, Any]]
         [{
             "exposure_round": i + 1,
-            "payload_in_memory": payload_in_memory,
+            "payload_in_memory_count": payload_in_memory_count,
             "full_metrics": step_metrics
         },
         ...]
         trigger_metrics: List[Dict[str, Any]]
         [{
             "trigger_round": i + 1,
-            "payload_in_memory": payload_in_memory,
+            "payload_in_memory_count": payload_in_memory_count,
             "reload_payload_times": reload_payload_times,
             "exfiltration": exfiltration_detected,
             "command_exec": command_exec_detected,
