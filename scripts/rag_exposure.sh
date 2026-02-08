@@ -1,10 +1,10 @@
 #! /bin/bash
 
 # Model and Basic Settings
-MODEL_NAME="google/gemini-2.5-flash"
-DB_PATH="/data2/xianglin/zombie_agent/gemini_evolve_db/msmarco"
-SAVE_DIR="/data2/xianglin/zombie_agent/gemini_evolve_db/msmarco/log_results"
-EVOLVE_MODE="reflection"
+MODEL_NAME="z-ai/glm-4.7-flash"
+DB_PATH="/data2/xianglin/zombie_agent/glm_evolve_db/msmarco"
+SAVE_DIR="/data2/xianglin/zombie_agent/glm_evolve_db/msmarco/log_results"
+EVOLVE_MODE="experience"
 TOP_K=20
 
 # Exposure Phase Settings

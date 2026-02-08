@@ -4,15 +4,15 @@
 PHASE="trigger"  # Change to "trigger" or "both" as needed
 
 # Model and Basic Settings
-MODEL_NAME="qwen/qwen3-235b-a22b-2507"
-DB_PATH="/data2/xianglin/zombie_agent/qwen_db/msmarco"
-MAX_STEPS=10
-EVOLVE_MODE="raw"
+MODEL_NAME="google/gemini-2.5-flash"
+DB_PATH="/data2/xianglin/zombie_agent/gemini_evolve_db/msmarco"
+MAX_STEPS=15
+EVOLVE_MODE="reflection"
 TOP_K=20
-SAVE_DIR="/data2/xianglin/zombie_agent/qwen_db/msmarco/log_results"
+SAVE_DIR="/data2/xianglin/zombie_agent/gemini_evolve_db/msmarco/log_results"
 
 # Exposure Phase Settings
-EXPOSURE_ROUNDS=280
+EXPOSURE_ROUNDS=224
 
 # Trigger Phase Settings
 DATASET_NAME_OR_PATH="data-for-agents/insta-150k-v1"

@@ -6,7 +6,7 @@
 
 # Model settings
 MODEL_NAME="google/gemini-2.5-flash"
-ATTACKER_MODEL_NAME="google/gemini-3-flash-preview"
+ATTACKER_MODEL_NAME="google/gemini-2.5-pro"
 
 # Dataset
 DATASET_NAME_OR_PATH="data-for-agents/insta-150k-v1"
