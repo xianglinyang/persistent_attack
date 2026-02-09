@@ -52,14 +52,13 @@ def detect(req: DetectRequest):
 
     if not req.texts or len(req.texts) > 128:
         raise HTTPException(status_code=400, detail="texts must be 1..128 items")
-    if any(len(t) > 20000 for t in req.texts):
-        raise HTTPException(status_code=400, detail="text too long")
-
+    texts = [text[:20000] for text in req.texts]
+   
     with torch.no_grad():
-        out = clf(req.texts)
+        out = clf(texts)
 
     results: List[DetectItem] = []
-    for text, o in zip(req.texts, out):
+    for text, o in zip(texts, out):
         label = str(o["label"])
         conf = float(o["score"])
         print(label, conf)
