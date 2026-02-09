@@ -1,6 +1,8 @@
 import random
 from typing import List, Tuple, Dict, Optional, Any
 from dataclasses import dataclass, field
+from collections import deque
+from abc import ABC, abstractmethod
 
 @dataclass
 class Candidate:
@@ -11,13 +13,147 @@ class Candidate:
     score: float = 0.0
     features: tuple = (0, 0)
 
-    @property
-    def text(self):
-        """Backwards compatibility helper"""
-        return f"{self.query} | {self.payload}"
+
+class SearchStorage:
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def get_best(self) -> Optional[Candidate]:
+        pass
+    
+
+class AutoDanStorage(SearchStorage):
+    """
+    Implements a standard population container for Genetic Algorithms.
+    """
+    def __init__(self, max_population_size: int = 20):
+        self.max_pop_size = max_population_size
+        self.population: List[Candidate] = []
+        self.archive: List[Candidate] = [] # Stores all historical high-scorers
+        self.global_best: Optional[Candidate] = None
+
+    def add_population(self, candidates: List[Candidate]):
+        """
+        Adds new offspring.
+        Note: In GA, this usually happens in a batch at the end of a generation.
+        """
+        for c in candidates:
+            self._update_best(c)
+        
+        self.population.extend(candidates)
+
+    def selection(self, top_k: int = 5) -> List[Candidate]:
+        """
+        Returns the Elites (highest scores).
+        Used to be parents for the next generation.
+        """
+        # Sort descending by score
+        sorted_pop = sorted(self.population, key=lambda x: x.score, reverse=True)
+        return sorted_pop[:top_k]
+
+    def prune_population(self):
+        """
+        Keeps population within max_pop_size (Survival of the fittest).
+        """
+        # Sort descending
+        sorted_pop = sorted(self.population, key=lambda x: x.score, reverse=True)
+        # Keep top N
+        self.population = sorted_pop[:self.max_pop_size]
+
+    def _update_best(self, candidate):
+        if self.global_best is None or candidate.score > self.global_best.score:
+            self.global_best = candidate
+        
+        # Optional: Save to archive if score is decent
+        if candidate.score > 5.0:
+            self.archive.append(candidate)
+
+    def get_best(self) -> Optional[Candidate]:
+        return self.global_best
 
 
-class MapElitesStorage:
+class TapStorage(SearchStorage):
+    """
+    Implements a Breadth-First Search (BFS) Queue for the TAP attack.
+    It holds candidates that need to be expanded (branched).
+    """
+    def __init__(self):
+        self.queue = deque()  # The frontier of the tree
+        self.history = []     # Archive of all attempts (for logging/deduplication)
+        self.best_candidate: Optional[Candidate] = None
+
+    def add(self, candidate: Candidate):
+        """
+        Adds a candidate to the queue to be expanded later.
+        TAP typically only adds candidates that pass the 'off-topic' filter.
+        """
+        # Update global best
+        if self.best_candidate is None or candidate.score > self.best_candidate.score:
+            self.best_candidate = candidate
+            
+        self.queue.append(candidate)
+        self.history.append(candidate)
+
+    def get_next(self) -> Optional[Candidate]:
+        """
+        Pop the next candidate to branch from (BFS order).
+        """
+        if not self.queue:
+            return None
+        return self.queue.popleft()
+
+    def is_empty(self) -> bool:
+        return len(self.queue) == 0
+
+    def get_best(self) -> Optional[Candidate]:
+        return self.best_candidate
+
+
+class PairStorage(SearchStorage):
+    """
+    Implements parallel storage for PAIR.
+    Maintains 'num_streams' independent lines of evolution.
+    """
+    def __init__(self, num_streams: int = 3):
+        self.num_streams = num_streams
+        # Initialize streams with None
+        self.streams: List[Optional[Candidate]] = [None] * num_streams
+        self.global_best: Optional[Candidate] = None
+
+    def init_stream(self, stream_index: int, seed: Candidate):
+        """Initializes a specific stream with a seed."""
+        self.streams[stream_index] = seed
+        self._update_global_best(seed)
+
+    def update_stream(self, stream_index: int, new_candidate: Candidate):
+        """
+        PAIR Logic: 
+        Compare new_candidate with the current one in this stream.
+        If new is better, replace old. If not, keep old (or logic defined by controller).
+        """
+        current = self.streams[stream_index]
+        
+        # Simple greedy update: if score is better or equal, replace.
+        # (PAIR usually replaces if score is higher OR if it's a valid refinement)
+        if current is None or new_candidate.score >= current.score:
+            self.streams[stream_index] = new_candidate
+        
+        self._update_global_best(new_candidate)
+
+    def get_current_candidates(self) -> List[Candidate]:
+        """Returns the current 'best' from all streams to be mutated."""
+        return [c for c in self.streams if c is not None]
+
+    def _update_global_best(self, candidate):
+        if self.global_best is None or candidate.score > self.global_best.score:
+            self.global_best = candidate
+
+    def get_best(self) -> Optional[Candidate]:
+        return self.global_best
+
+
+class MapElitesStorage(SearchStorage):
     """
     Implements the Grid-like storage described in the text.
     It partitions the search space based on characteristics (Length, Diversity).
