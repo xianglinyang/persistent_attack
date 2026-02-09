@@ -52,7 +52,7 @@ def project_response_to_guard_decision(response: str | Dict[str, Any], threshold
 
 
 class LLMGuardClient:
-    def __init__(self, implementation_name: str= "openai/gpt-5-nano", threshold: float = 0.8):
+    def __init__(self, implementation_name: str= "openai/gpt-5-nano", threshold: float = 0.5):
         self.implementation_name = implementation_name
         self.threshold = threshold
 
