@@ -161,7 +161,7 @@ def pair_attack_iterations(
             break
         elif not result['guard_blocked']:
             logger.info(f"\n⚠️  Guard evaded but attack not fully successful yet.")
-            break
+            # break
         else:
             logger.info(f"\n⚠️  Guard blocked at iteration {iteration}!")
         
