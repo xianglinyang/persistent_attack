@@ -3,7 +3,6 @@ from src.llm_zoo import BaseLLM, load_model
 from src.memory.sliding_window_memory import SlidingWindowMemory
 from src.evaluate.attack_evaluator import sliding_window_count_payload, asr_eval
 from src.guard.llm_detector import detect_attack
-from src.guard.safety_guard import GuardDecision
 from typing import Dict, Any, Optional, List, Tuple
 
 import logging  
@@ -108,18 +107,10 @@ class SlidingWindowWebAgent(WebAgentBase):
         2) tool returned result (observation from web or execution result)
         """
         # ---- Guard Model Check ----
-        guard_result = detect_attack(text, self.guard_model_name)
-        guard_category = guard_result["category"]
-        confidence = guard_result["confidence"]
-        reason = guard_result["explanation"]
-
-        guard_decision = GuardDecision(
-            blocked=guard_category != "benign",
-            valid= not (confidence == 0),
-            category=guard_category,
-            confidence=confidence,
-            reason=reason
-        )
+        guard_decision = detect_attack(text, self.guard_model_name)
+        reason = guard_decision.reason
+        guard_category = guard_decision.category
+        
         if not guard_decision.valid:
             logger.info(f"[GUARD INVALID] {reason}")
         elif guard_decision.blocked:
@@ -176,22 +167,7 @@ class SlidingWindowWebAgent(WebAgentBase):
         task_completed = False
         all_actions: List[str] = []
         step = 1
-        block_by_guard = False
-        
-        # # ---- Guard Check: User Input ----
-        # if self.guard_enabled:
-        #     guard_decision = self._guard_check_text(user_goal, "user")
-        #     if guard_decision.valid and guard_decision.blocked:
-        #         # User input blocked, record and return immediately
-        #         guard_msg = f"[GUARD BLOCKED] User input blocked.\n\n [Type]: {guard_decision.category}\n\n [Reason]: {guard_decision.reason}"
-        #         logs["steps"].append({
-        #             "step": 0,
-        #             "thought": "",
-        #             "actions": [],
-        #             "observations": [guard_msg],
-        #             "task_completed": False,
-        #         })
-        #         block_by_guard = True
+        block_by_guard = False     
         
         while step <= self.max_steps and not task_completed and not block_by_guard:
             logger.info(f"[Step {step}]")

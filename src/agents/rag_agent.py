@@ -151,6 +151,30 @@ class RAGWebAgent(WebAgentBase):
             List of run_ids for this task
         """
         return self.run_tracker.get(task_id, [])
+    
+    def _guard_check_text(self, text: str, source: str) -> bool:
+        """Check if the text is safe using the guard model.
+        
+        Validate the data source to be checked:
+        1) user task (user input)
+        2) tool returned result (observation from web or execution result)
+        """
+        # ---- Guard Model Check ----
+        guard_decision = detect_attack(text, self.guard_model_name)
+        reason = guard_decision.reason
+        guard_category = guard_decision.category
+        
+        if not guard_decision.valid:
+            logger.info(f"[GUARD INVALID] {reason}")
+        elif guard_decision.blocked:
+            logger.info(f"[GUARD BLOCKED] Prompt from {source} blocked by guard model")
+            logger.info(f"[GUARD REASON] {reason}")
+            logger.info(f"[GUARD TYPE] {guard_category}")
+        else:
+            logger.info(f"[GUARD PASSED] Prompt passed guard model check")
+            logger.info(f"[GUARD TYPE] {guard_category}")
+        
+        return guard_decision
 
     def run_task(
         self,
@@ -204,9 +228,10 @@ class RAGWebAgent(WebAgentBase):
         web_context: str = ""
         task_completed = False
         all_actions: List[str] = []
+        block_by_guard = False     
 
         step = 1
-        while step <= self.max_steps and not task_completed:
+        while step <= self.max_steps and not task_completed and not block_by_guard:
             logger.info(f"[Step {step}]")
             
             # Initialize step log
@@ -231,21 +256,6 @@ class RAGWebAgent(WebAgentBase):
 
             # ---- Prompt Formatting ----
             prompt = self._format_prompt(user_goal, web_context, memory_summary)
-            
-            # ---- Guard Model Check ----
-            if self.guard_enabled:
-                guard_result = detect_attack(prompt, self.guard_model_name)
-                if guard_result["category"] != "benign":
-                    logger.info(f"[GUARD BLOCKED] Prompt blocked by guard model")
-                    logger.info(f"[GUARD REASON] {guard_result['explanation']}")
-
-                    final_answer = f"""[GUARD BLOCKED] Prompt blocked by guard model.\n\n [Type]: {guard_result['category']}\n\n [Reason]: {guard_result['explanation']}"""
-                    self._add_history_message("assistant", final_answer)
-                    step_log["observations"].append(final_answer)
-                    logs["steps"].append(step_log)
-                    break
-                else:
-                    logger.info(f"[GUARD PASSED] Prompt passed guard model check")
             
             # ---- LLM ----
             llm_output = self.llm.invoke(prompt)
@@ -283,6 +293,21 @@ class RAGWebAgent(WebAgentBase):
                 if action_name in self.tool_server.get_available_tools():
                     result = self.tool_server.execute(action_name, action)
                     result_str = str(result)
+
+                    # ---- Guard Check: Tool Result (especially web content) ----
+                    if self.guard_enabled:
+                        guard_decision = self._guard_check_text(result_str, "tool result")
+                        if guard_decision.valid and guard_decision.blocked:
+                            guard_msg = f"[GUARD BLOCKED] Web content blocked by guard model.\n\n [Type]: {guard_decision.category}\n\n [Reason]: {guard_decision.reason}"
+                            
+                            step_log['observations'].append(guard_msg)
+
+                            logger.info(guard_msg)
+
+                            # current_step_observations.append(f"[GUARD BLOCKED] Web content blocked by guard model")
+                            block_by_guard = True
+                            break
+
                     current_step_observations.append(result_str)
                     step_log["observations"].append(result_str)
 
@@ -385,7 +410,7 @@ class RAGWebAgent(WebAgentBase):
             "task_id": task_id,
             "run_id": run_id,
         }
-
+        logs["guard_blocked"] = block_by_guard
         return metrics, logs
 
 def normal_case_rag():
