@@ -11,7 +11,7 @@ def project_label_to_guard_decision(res: Dict[str, Any], threshold: float = 0.8)
         return GuardDecision(blocked=True, valid=conf >= threshold, category=label, confidence=conf, reason="Prompt injection detected")
 
 class PIGuardClient:
-    def __init__(self, base_url: str = "http://localhost:12390", timeout: float = 10.0, threshold: float = 0.8):
+    def __init__(self, base_url: str = "http://localhost:12390", timeout: float = 10.0, threshold: float = 0.5):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.threshold = threshold
