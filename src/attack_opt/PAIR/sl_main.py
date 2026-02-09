@@ -224,8 +224,9 @@ def main_pair_experiment(
     budget_per_round: int = 10,
     total_budget: int = 20,
     max_steps: int = 10,
-    guard: bool = False,
-    guard_model_name: str = None,
+    detection_guard: bool = False,
+    detection_guard_model_name: str = None,
+    instruction_guard_name: str = "raw",
     attacker_model_name: str = "openai/gpt-4o-mini",
     optimize_payload: bool = True,
     save_dir: str = "results/pair_payload",
@@ -262,9 +263,10 @@ def main_pair_experiment(
     logger.info(f"Budget per Round: {budget_per_round}")
     logger.info(f"Total Budget: {total_budget}")
     logger.info(f"Window Size: {window_size}")
-    logger.info(f"Guard Enabled: {guard}")
-    if guard:
-        logger.info(f"Guard Model: {guard_model_name}")
+    logger.info(f"Detection guard Enabled: {detection_guard}")
+    if detection_guard:
+        logger.info(f"Detection guard model: {detection_guard_model_name}")
+    logger.info(f"Instruction guard name: {instruction_guard_name}")
     logger.info(f"{'='*80}\n")
     
     # Prepare queries
@@ -280,8 +282,9 @@ def main_pair_experiment(
         llm=llm,
         memory=memory,
         max_steps=max_steps,
-        guard=guard,
-        guard_model_name=guard_model_name,
+        detection_guard=detection_guard,
+        detection_guard_model_name=detection_guard_model_name,
+        instruction_guard_name=instruction_guard_name,
     )
     
     # Exposure phase with payload optimization
@@ -417,8 +420,9 @@ if __name__ == "__main__":
     parser.add_argument("--max_steps", type=int, default=10)
     
     # Guard settings
-    parser.add_argument("--guard", type=int, default=0)
-    parser.add_argument("--guard_model_name", type=str, default="openai/gpt-4.1-nano")
+    parser.add_argument("--detection_guard", type=int, default=0)
+    parser.add_argument("--detection_guard_model_name", type=str, default="openai/gpt-4.1-nano")
+    parser.add_argument("--instruction_guard_name", type=str, default="raw")
     
     # Save settings
     parser.add_argument("--save_dir", type=str, default="results/pair")
@@ -438,8 +442,9 @@ if __name__ == "__main__":
         total_budget=args.total_budget,
         window_size=args.window_size,
         max_steps=args.max_steps,
-        guard=bool(args.guard),
-        guard_model_name=args.guard_model_name,
+        detection_guard=bool(args.detection_guard),
+        detection_guard_model_name=args.detection_guard_model_name,
+        instruction_guard_name=args.instruction_guard_name,
         attacker_model_name=args.attacker_model_name,
         optimize_payload=True,
         save_dir=args.save_dir,

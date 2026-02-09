@@ -165,8 +165,9 @@ def main_sliding_window_agent_attack(
     trigger_runs: int = 3, 
     window_size: int = 30, 
     max_steps: int = 10,
-    guard: bool = False,
-    guard_model_name: str = None,
+    detection_guard: bool = False,
+    detection_guard_model_name: str = None,
+    instruction_guard_name: str = "raw",
     save_dir: str = "results",
 ):
     """
@@ -191,9 +192,10 @@ def main_sliding_window_agent_attack(
     print(f"Exposure Rounds: {exposure_rounds}")
     print(f"Trigger Rounds: {trigger_rounds} × {trigger_runs} runs")
     print(f"Window Size: {window_size}")
-    print(f"Guard Enabled: {guard}")
-    if guard:
-        print(f"Guard Model: {guard_model_name}")
+    print(f"Detection guard Enabled: {detection_guard}")
+    if detection_guard:
+        print(f"Detection guard model: {detection_guard_model_name}")
+    print(f"Instruction guard name: {instruction_guard_name}")
     print(f"{'='*80}\n")
     
     # exposure queries
@@ -211,8 +213,9 @@ def main_sliding_window_agent_attack(
         llm=llm, 
         memory=memory, 
         max_steps=max_steps,
-        guard=guard,
-        guard_model_name=guard_model_name,
+        detection_guard=detection_guard,
+        detection_guard_model_name=detection_guard_model_name,
+        instruction_guard_name=instruction_guard_name,
     )
 
     # Exposure Period
@@ -230,8 +233,9 @@ def main_sliding_window_agent_attack(
             llm=llm, 
             memory=copy_memory, 
             max_steps=max_steps,
-            guard=guard,
-            guard_model_name=guard_model_name,
+            detection_guard=detection_guard,
+            detection_guard_model_name=detection_guard_model_name,
+            instruction_guard_name=instruction_guard_name,
         )
         
         copy_agent, batch_trigger_metrics, batch_trigger_logs = trigger_SL(copy_agent, trigger_queries_batch)
@@ -260,8 +264,9 @@ if __name__ == "__main__":
     parser.add_argument("--trigger_runs", type=int, default=3)
     parser.add_argument("--window_size", type=int, default=30)
     parser.add_argument("--max_steps", type=int, default=10)
-    parser.add_argument("--guard", type=int, default=0)
-    parser.add_argument("--guard_model_name", type=str, default="openai/gpt-4.1-nano")
+    parser.add_argument("--detection_guard", type=int, default=0)
+    parser.add_argument("--detection_guard_model_name", type=str, default="openai/gpt-4.1-nano")
+    parser.add_argument("--instruction_guard_name", type=str, default="raw")
     parser.add_argument("--save_dir", type=str, default="results")
     args = parser.parse_args()
 
@@ -275,7 +280,8 @@ if __name__ == "__main__":
         trigger_runs=args.trigger_runs,
         window_size=args.window_size,
         max_steps=args.max_steps,
-        guard=args.guard,
-        guard_model_name=args.guard_model_name,
+        detection_guard=args.detection_guard,
+        detection_guard_model_name=args.detection_guard_model_name,
+        instruction_guard_name=args.instruction_guard_name,
         save_dir=args.save_dir,
     )

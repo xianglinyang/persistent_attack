@@ -300,9 +300,11 @@ def main_rag_agent_exposure_experiment(
     # safety knobs
     allow_command_patterns: Optional[List[str]] = None,
     strict_cmd_asr: bool = False,
-    # guard knobs
-    guard: bool = False,
-    guard_model_name: Optional[str] = None,
+    # detection guard knobs
+    detection_guard: bool = False,
+    detection_guard_model_name: Optional[str] = None,
+    # instruction guard knobs
+    instruction_guard_name: str = "raw",
 ) -> Dict[str, Any]:
     """
     Experiment harness with:
@@ -328,9 +330,10 @@ def main_rag_agent_exposure_experiment(
     logger.info(f"DB Path: {db_path}")
     logger.info(f"Exposure rounds: {exposure_rounds}")
     logger.info(f"Evolve mode: {evolve_mode}")
-    logger.info(f"Guard enabled: {guard}")
-    if guard:
-        logger.info(f"Guard model: {guard_model_name}")
+    logger.info(f"Detection guard enabled: {detection_guard}")
+    if detection_guard:
+        logger.info(f"Detection guard model: {detection_guard_model_name}")
+    logger.info(f"Instruction guard name: {instruction_guard_name}")
     logger.info("=" * 80 + "\n")
 
     memory = RAGMemory(
@@ -414,7 +417,7 @@ def main_rag_agent_exposure_experiment(
     logger.info(f"Start time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 80 + "\n")
 
-    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, guard=guard, guard_model_name=guard_model_name)
+    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, detection_guard=detection_guard, detection_guard_model_name=detection_guard_model_name, instruction_guard_name=instruction_guard_name)
 
     # Use the exposure_RAG function
     agent, exposure_metrics, all_exposure_logs = exposure_RAG(
@@ -461,8 +464,9 @@ def main_rag_agent_trigger_experiment(
     allow_command_patterns: Optional[List[str]] = None,
     strict_cmd_asr: bool = False,
     # guard knobs
-    guard: bool = False,
-    guard_model_name: Optional[str] = None,
+    detection_guard: bool = False,
+    detection_guard_model_name: Optional[str] = None,
+    instruction_guard_name: str = "raw",
 ) -> Dict[str, Any]:
     """
     Trigger-only experiment:
@@ -491,9 +495,10 @@ def main_rag_agent_trigger_experiment(
     logger.info(f"Top k: {top_k}")
     logger.info(f"Allow command patterns: {allow_command_patterns}")
     logger.info(f"Strict command ASR: {strict_cmd_asr}")
-    logger.info(f"Guard enabled: {guard}")
-    if guard:
-        logger.info(f"Guard model: {guard_model_name}")
+    logger.info(f"Detection guard enabled: {detection_guard}")
+    if detection_guard:
+        logger.info(f"Detection guard model: {detection_guard_model_name}")
+    logger.info(f"Instruction guard name: {instruction_guard_name}")
     logger.info("=" * 80 + "\n")
 
     memory = RAGMemory(
@@ -506,7 +511,7 @@ def main_rag_agent_trigger_experiment(
     )
 
     llm = load_model(model_name)
-    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, guard=guard, guard_model_name=guard_model_name)
+    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, detection_guard=detection_guard, detection_guard_model_name=detection_guard_model_name, instruction_guard_name=instruction_guard_name)
 
     trigger_metrics: List[Dict[str, Any]] = []
     all_trigger_logs: List[Dict[str, Any]] = []
@@ -575,8 +580,9 @@ def main():
     # Safety and guard settings
     parser.add_argument("--allow_command_patterns", type=List[str], default=None)
     parser.add_argument("--strict_cmd_asr", type=int, default=0)
-    parser.add_argument("--guard", type=int, default=0)
-    parser.add_argument("--guard_model_name", type=str, default=None)
+    parser.add_argument("--detection_guard", type=int, default=0)
+    parser.add_argument("--detection_guard_model_name", type=str, default=None)
+    parser.add_argument("--instruction_guard_name", type=str, default="raw")
     
     args = parser.parse_args()
 
@@ -624,8 +630,9 @@ def main():
             reset=bool(args.reset),
             allow_command_patterns=args.allow_command_patterns,
             strict_cmd_asr=bool(args.strict_cmd_asr),
-            guard=bool(args.guard),
-            guard_model_name=args.guard_model_name,
+            detection_guard=bool(args.detection_guard),
+            detection_guard_model_name=args.detection_guard_model_name,
+            instruction_guard_name=args.instruction_guard_name,
         )
         
         logger.info(f"\n✅ Exposure phase complete!")
@@ -665,8 +672,9 @@ def main():
             top_k=args.top_k,
             allow_command_patterns=args.allow_command_patterns,
             strict_cmd_asr=bool(args.strict_cmd_asr),
-            guard=bool(args.guard),
-            guard_model_name=args.guard_model_name,
+            detection_guard=bool(args.detection_guard),
+            detection_guard_model_name=args.detection_guard_model_name,
+            instruction_guard_name=args.instruction_guard_name,
         )
         
         logger.info(f"\n✅ Trigger phase complete!")
