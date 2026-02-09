@@ -1,3 +1,12 @@
+'''
+Score the attack success for gradient.
+
+candidates:
+1. perplexity
+2. classifier,
+3. LLM-as-judge metrics, possibly with multiobjective scoring.
+'''
+
 from src.attack_opt.Search_based.storage import Candidate
 from src.llm_zoo import load_model
 from typing import Dict, Any
