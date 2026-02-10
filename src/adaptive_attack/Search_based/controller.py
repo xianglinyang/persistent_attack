@@ -187,7 +187,7 @@ class MapElitesSlidingWindowController(SearchController):
 # ==========================================
 # 3. TAP Controller (Tree Search / BFS)
 # ==========================================
-class TapController(SearchController):
+class TapSlidingWindowController(SearchController):
     def __init__(self, agent: SlidingWindowWebAgent, mutator: BaseMutator = None, scorer: BaseScorer = None, storage: SearchStorage = None):
         super().__init__(mutator=mutator, scorer=scorer, storage=storage)
         self.agent = agent
@@ -253,7 +253,7 @@ class TapController(SearchController):
 # 4. AutoDAN Controller (Genetic Algorithm)
 # ==========================================
 
-class AutoDanController(SearchController):
+class AutoDANSlidingWindowController(SearchController):
     def __init__(self,
         agent: SlidingWindowWebAgent,
         mutator: AutoDanMutator = None,

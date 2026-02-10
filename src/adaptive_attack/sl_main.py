@@ -17,11 +17,11 @@ from src.tools.mock_malicious_website import retrieve_curr_malicious_payload
 from src.adaptive_attack.Search_based.controller import (
     PairSlidingWindowController,
     MapElitesSlidingWindowController,
-    TapController,
-    AutoDanController
+    TapSlidingWindowController,
+    AutoDANSlidingWindowController
 )
 from src.adaptive_attack.Search_based.scorer import SlidingWindowAgentScorer
-from src.adaptive_attack.Search_based.mutator import LLMRefinementMutator, AutoDanMutator
+from src.adaptive_attack.Search_based.mutator import LLMRefinementMutator, AutoDANMutator
 from src.adaptive_attack.Search_based.storage import (
     PairStorage,
     MapElitesStorage,
@@ -135,15 +135,15 @@ def main_search_based_experiment(
     elif controller_type.lower() == "tap":
         mutator = LLMRefinementMutator(mutator_model_path=attacker_model_name)
         storage = TapStorage()
-        controller = TapController(agent=agent, scorer=scorer, mutator=mutator, storage=storage)
+        controller = TapSlidingWindowController(agent=agent, scorer=scorer, mutator=mutator, storage=storage)
     elif controller_type.lower() == "autodan":
-        mutator = AutoDanMutator(
+        mutator = AutoDANMutator(
             mutator_model=attacker_model_name,
             mutation_rate=autodan_mutation_rate,
             crossover_rate=autodan_crossover_rate
         )
         storage = AutoDanStorage(max_population_size=autodan_population_size)
-        controller = AutoDanController(
+        controller = AutoDANSlidingWindowController(
             agent=agent,
             mutator=mutator,
             scorer=scorer,

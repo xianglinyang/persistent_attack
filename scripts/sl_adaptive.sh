@@ -15,7 +15,7 @@ DATASET_NAME_OR_PATH="data-for-agents/insta-150k-v1"
 EXPOSURE_ROUNDS=3
 TRIGGER_ROUNDS=10
 BUDGET_PER_ROUND=5
-TOTAL_BUDGET=50
+TOTAL_BUDGET=10
 
 # Agent settings
 WINDOW_SIZE=50
@@ -25,6 +25,13 @@ MAX_STEPS=30
 DETECTION_GUARD=1 # 0: False, 1: True
 DETECTION_GUARD_MODEL_NAME="openai/gpt-5-nano" # "openai/gpt-4.1-nano", "PIGuard", "ProtectAIv2", "PromptGuard"
 INSTRUCTION_GUARD_NAME="raw" # "raw", "sandwich", "instructional", "reminder", "isolation", "spotlight"
+CONTROLLER_TYPE="tap"
+
+# AutoDAN settings
+AUTODAN_POPULATION_SIZE=20
+AUTODAN_NUM_ELITES=2
+AUTODAN_MUTATION_RATE=0.1
+AUTODAN_CROSSOVER_RATE=0.5
 
 # Output directory
 SAVE_DIR="/data2/xianglin/zombie_agent/persistent_attack/pair_sl"
@@ -47,7 +54,7 @@ echo ""
 # Change to project root directory
 cd "$(dirname "$0")/.." || exit 1
 
-python -m src.attack_opt.sl_main \
+python -m src.adaptive_attack.sl_main \
     --model_name "$MODEL_NAME" \
     --attacker_model_name "$ATTACKER_MODEL_NAME" \
     --dataset_name_or_path "$DATASET_NAME_OR_PATH" \
@@ -60,6 +67,11 @@ python -m src.attack_opt.sl_main \
     --detection_guard $DETECTION_GUARD \
     --detection_guard_model_name "$DETECTION_GUARD_MODEL_NAME" \
     --instruction_guard_name "$INSTRUCTION_GUARD_NAME" \
+    --controller_type "$CONTROLLER_TYPE" \
+    --autodan_population_size $AUTODAN_POPULATION_SIZE \
+    --autodan_num_elites $AUTODAN_NUM_ELITES \
+    --autodan_mutation_rate $AUTODAN_MUTATION_RATE \
+    --autodan_crossover_rate $AUTODAN_CROSSOVER_RATE \
     --save_dir "$SAVE_DIR"
 
 # --opt_goal \ # guard, write_into_memory, asr

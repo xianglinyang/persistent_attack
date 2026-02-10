@@ -194,7 +194,7 @@ class LLMRefinementMutator(LmMutator):
         return new_candidate
 
 
-class AutoDanMutator(LmMutator):
+class AutoDANMutator(LmMutator):
 
     def __init__(self, mutator_model, mutation_rate=0.1, crossover_rate=0.5):
         super().__init__(mutator_model)
