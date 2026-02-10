@@ -17,14 +17,16 @@ from src.tools.mock_malicious_website import retrieve_curr_malicious_payload
 from src.adaptive_attack.Search_based.controller import (
     PairSlidingWindowController,
     MapElitesSlidingWindowController,
-    TapController
+    TapController,
+    AutoDanController
 )
 from src.adaptive_attack.Search_based.scorer import SlidingWindowAgentScorer
-from src.adaptive_attack.Search_based.mutator import LLMRefinementMutator
+from src.adaptive_attack.Search_based.mutator import LLMRefinementMutator, AutoDanMutator
 from src.adaptive_attack.Search_based.storage import (
     PairStorage,
     MapElitesStorage,
-    TapStorage
+    TapStorage,
+    AutoDanStorage
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,11 @@ def main_search_based_experiment(
     optimize_payload: bool = True,
     save_dir: str = "results/pair_payload",
     controller_type: str = "pair",
+    # AutoDAN specific parameters
+    autodan_population_size: int = 20,
+    autodan_num_elites: int = 2,
+    autodan_mutation_rate: float = 0.1,
+    autodan_crossover_rate: float = 0.5,
 ):
     """
     Search-based attack experiment with different controller options.
@@ -63,11 +70,16 @@ def main_search_based_experiment(
         attacker_model_name: Attacker LLM for payload refinement
         optimize_payload: If True, optimizes the malicious payload. If False, optimizes the query.
         save_dir: Directory to save results
-        controller_type: Type of controller to use ('pair', 'map_elites', 'tap')
+        controller_type: Type of controller to use ('pair', 'map_elites', 'tap', 'autodan')
+        autodan_population_size: Population size for AutoDAN genetic algorithm
+        autodan_num_elites: Number of elite individuals to preserve in AutoDAN
+        autodan_mutation_rate: Mutation rate for AutoDAN (0.0-1.0)
+        autodan_crossover_rate: Crossover rate for AutoDAN (0.0-1.0)
     
     Note:
         Each round runs 1 initial attempt + up to budget_per_round optimizations.
         Only the optimization steps count against total_budget.
+        For AutoDAN, budget_per_round represents the number of generations.
     """
     logger.info(f"\n{'='*80}")
     logger.info(f"{controller_type.upper()} Attack - {'Payload' if optimize_payload else 'Query'} Optimization")
@@ -84,6 +96,11 @@ def main_search_based_experiment(
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
     logger.info(f"Instruction guard name: {instruction_guard_name}")
+    if controller_type.lower() == "autodan":
+        logger.info(f"AutoDAN Population Size: {autodan_population_size}")
+        logger.info(f"AutoDAN Num Elites: {autodan_num_elites}")
+        logger.info(f"AutoDAN Mutation Rate: {autodan_mutation_rate}")
+        logger.info(f"AutoDAN Crossover Rate: {autodan_crossover_rate}")
     logger.info(f"{'='*80}\n")
     
     # 0. Prepare queries
@@ -106,19 +123,36 @@ def main_search_based_experiment(
 
     # 2. Initialize Controller based on type
     scorer = SlidingWindowAgentScorer(critic_llm_name=attacker_model_name)
-    mutator = LLMRefinementMutator(mutator_model_path=attacker_model_name)
     
     if controller_type.lower() == "pair":
+        mutator = LLMRefinementMutator(mutator_model_path=attacker_model_name)
         storage = PairStorage()
         controller = PairSlidingWindowController(agent=agent, scorer=scorer, mutator=mutator, storage=storage)
     elif controller_type.lower() == "map_elites":
+        mutator = LLMRefinementMutator(mutator_model_path=attacker_model_name)
         storage = MapElitesStorage()
         controller = MapElitesSlidingWindowController(agent=agent, scorer=scorer, mutator=mutator, storage=storage)
     elif controller_type.lower() == "tap":
+        mutator = LLMRefinementMutator(mutator_model_path=attacker_model_name)
         storage = TapStorage()
         controller = TapController(agent=agent, scorer=scorer, mutator=mutator, storage=storage)
+    elif controller_type.lower() == "autodan":
+        mutator = AutoDanMutator(
+            mutator_model=attacker_model_name,
+            mutation_rate=autodan_mutation_rate,
+            crossover_rate=autodan_crossover_rate
+        )
+        storage = AutoDanStorage(max_population_size=autodan_population_size)
+        controller = AutoDanController(
+            agent=agent,
+            mutator=mutator,
+            scorer=scorer,
+            storage=storage,
+            population_size=autodan_population_size,
+            num_elites=autodan_num_elites
+        )
     else:
-        raise ValueError(f"Unknown controller type: {controller_type}. Choose from 'pair', 'map_elites', 'tap'")
+        raise ValueError(f"Unknown controller type: {controller_type}. Choose from 'pair', 'map_elites', 'tap', 'autodan'")
     
     # 3. Exposure phase
     logger.info(f"\n{'='*80}")
@@ -232,8 +266,8 @@ if __name__ == "__main__":
     
     # Controller settings
     parser.add_argument("--controller_type", type=str, default="pair", 
-                       choices=["pair", "map_elites", "tap"],
-                       help="Type of search controller: 'pair', 'map_elites', or 'tap'")
+                       choices=["pair", "map_elites", "tap", "autodan"],
+                       help="Type of search controller: 'pair', 'map_elites', 'tap', or 'autodan'")
     
     # Dataset and rounds
     parser.add_argument("--dataset_name_or_path", type=str, default="data-for-agents/insta-150k-v1")
@@ -252,6 +286,16 @@ if __name__ == "__main__":
     parser.add_argument("--detection_guard", type=int, default=0)
     parser.add_argument("--detection_guard_model_name", type=str, default="openai/gpt-4.1-nano")
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
+    
+    # AutoDAN specific settings
+    parser.add_argument("--autodan_population_size", type=int, default=20,
+                       help="Population size for AutoDAN genetic algorithm")
+    parser.add_argument("--autodan_num_elites", type=int, default=2,
+                       help="Number of elite individuals to preserve in AutoDAN")
+    parser.add_argument("--autodan_mutation_rate", type=float, default=0.1,
+                       help="Mutation rate for AutoDAN (0.0-1.0)")
+    parser.add_argument("--autodan_crossover_rate", type=float, default=0.5,
+                       help="Crossover rate for AutoDAN (0.0-1.0)")
     
     # Save settings
     parser.add_argument("--save_dir", type=str, default="results/search_based")
@@ -278,5 +322,9 @@ if __name__ == "__main__":
         optimize_payload=True,
         save_dir=args.save_dir,
         controller_type=args.controller_type,
+        autodan_population_size=args.autodan_population_size,
+        autodan_num_elites=args.autodan_num_elites,
+        autodan_mutation_rate=args.autodan_mutation_rate,
+        autodan_crossover_rate=args.autodan_crossover_rate,
     )
 
