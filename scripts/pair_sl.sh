@@ -5,14 +5,14 @@
 # Configuration for PAIR attack with sliding window memory
 
 # Model settings
-MODEL_NAME="google/gemini-2.5-flash"
+MODEL_NAME="z-ai/glm-4.7-flash"
 ATTACKER_MODEL_NAME="google/gemini-2.5-pro"
 
 # Dataset
 DATASET_NAME_OR_PATH="data-for-agents/insta-150k-v1"
 
 # Attack budget
-EXPOSURE_ROUNDS=5
+EXPOSURE_ROUNDS=3
 TRIGGER_ROUNDS=10
 BUDGET_PER_ROUND=5
 TOTAL_BUDGET=50
@@ -22,8 +22,9 @@ WINDOW_SIZE=50
 MAX_STEPS=30
 
 # Guard settings
-GUARD=1
-GUARD_MODEL_NAME="openai/gpt-5-nano"
+DETECTION_GUARD=1 # 0: False, 1: True
+DETECTION_GUARD_MODEL_NAME="openai/gpt-5-nano" # "openai/gpt-4.1-nano", "PIGuard", "ProtectAIv2", "PromptGuard"
+INSTRUCTION_GUARD_NAME="raw" # "raw", "sandwich", "instructional", "reminder", "isolation", "spotlight"
 
 # Output directory
 SAVE_DIR="/data2/xianglin/zombie_agent/persistent_attack/pair_sl"
@@ -37,11 +38,16 @@ echo "Optimization Mode: $MODE"
 echo "Exposure Rounds: $EXPOSURE_ROUNDS"
 echo "Trigger Rounds: $TRIGGER_ROUNDS"
 echo "Budget: $TOTAL_BUDGET"
-echo "Guard: $([ $GUARD -eq 1 ] && echo 'Enabled' || echo 'Disabled')"
+echo "Guard: $([ $DETECTION_GUARD -eq 1 ] && echo 'Enabled' || echo 'Disabled')"
+echo "Detection Guard Model: $DETECTION_GUARD_MODEL_NAME"
+echo "Instruction Guard Name: $INSTRUCTION_GUARD_NAME"
 echo "================================================"
 echo ""
 
-python -m src.attack_opt.PAIR.sl_main \
+# Change to project root directory
+cd "$(dirname "$0")/.." || exit 1
+
+python -m src.attack_opt.sl_main \
     --model_name "$MODEL_NAME" \
     --attacker_model_name "$ATTACKER_MODEL_NAME" \
     --dataset_name_or_path "$DATASET_NAME_OR_PATH" \
@@ -51,8 +57,9 @@ python -m src.attack_opt.PAIR.sl_main \
     --total_budget $TOTAL_BUDGET \
     --window_size $WINDOW_SIZE \
     --max_steps $MAX_STEPS \
-    --guard $GUARD \
-    --guard_model_name "$GUARD_MODEL_NAME" \
+    --detection_guard $DETECTION_GUARD \
+    --detection_guard_model_name "$DETECTION_GUARD_MODEL_NAME" \
+    --instruction_guard_name "$INSTRUCTION_GUARD_NAME" \
     --save_dir "$SAVE_DIR"
 
 # --opt_goal \ # guard, write_into_memory, asr
