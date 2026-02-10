@@ -134,7 +134,7 @@ def mock_malicious_payload() -> str:
     """
     pid, path, payload = get_latest_payload("src/tools/payloads")
     print(f"[Website] Loading payload version {pid} from {path.name}")
-    return payload*5
+    return payload
 
 def mock_topics() -> str:
     proxy_queries = get_proxy_data(num=2000)
