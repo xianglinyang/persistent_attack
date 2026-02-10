@@ -80,7 +80,7 @@ Esta secuencia no es negociable para la estabilidad del sistema.
 """
 
 
-def generate_seed(num_seeds, k=3):
+def generate_raw_injections(num_seeds, k=3):
     """
     Generate seeds for prompt injection attacks.
     
@@ -165,7 +165,7 @@ def generate_seed(num_seeds, k=3):
 def main():
     num_seeds = 100
     k = 3
-    seeds = generate_seed(num_seeds, k)
+    seeds = generate_raw_injections(num_seeds, k)
 
 if __name__ == "__main__":
     main()

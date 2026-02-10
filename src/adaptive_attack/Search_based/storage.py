@@ -3,6 +3,7 @@ from typing import List, Tuple, Dict, Optional, Any
 from dataclasses import dataclass, field
 from collections import deque
 from abc import ABC, abstractmethod
+import numpy as np
 
 
 @dataclass
@@ -15,7 +16,7 @@ class Candidate:
     features: tuple = (0, 0)
 
 
-class SearchStorage:
+class SearchStorage(ABC):
     def __init__(self):
         pass
 
@@ -36,54 +37,56 @@ class SearchStorage:
         pass
 
 
-
-class AutoDanStorage(SearchStorage):
-    """
-    Implements a standard population container for Genetic Algorithms.
-    """
+class AutoDanStorage:
     def __init__(self, max_population_size: int = 20):
         self.max_pop_size = max_population_size
         self.population: List[Candidate] = []
-        self.archive: List[Candidate] = [] # Stores all historical high-scorers
         self.global_best: Optional[Candidate] = None
 
     def add_population(self, candidates: List[Candidate]):
-        """
-        Adds new offspring.
-        Note: In GA, this usually happens in a batch at the end of a generation.
-        """
         for c in candidates:
-            self._update_best(c)
-        
+            if self.global_best is None or c.score > self.global_best.score:
+                self.global_best = c
         self.population.extend(candidates)
+        self.prune_population()
 
-    def selection(self, top_k: int = 5) -> List[Candidate]:
+    def select_parents(self, k: int) -> List[Candidate]:
         """
-        Returns the Elites (highest scores).
-        Used to be parents for the next generation.
+        Implements Roulette Wheel Selection logic from AutoDAN.
         """
-        # Sort descending by score
+        if not self.population: return []
+        
+        # Extract scores
+        scores = np.array([c.score for c in self.population])
+        
+        # Softmax normalization (as per `roulette_wheel_selection` with `if_softmax=True`)
+        # Note: AutoDAN code used negative loss, here we use positive scores (0-10)
+        # We can just normalize directly or use softmax if variance is high.
+        try:
+            exp_scores = np.exp(scores - np.max(scores)) # Stability trick
+            probs = exp_scores / exp_scores.sum()
+        except Exception:
+            # Fallback to linear probability
+            total = sum(scores)
+            if total == 0: probs = [1/len(scores)] * len(scores)
+            else: probs = scores / total
+
+        # Select indices
+        selected_indices = np.random.choice(len(self.population), size=k, p=probs, replace=True)
+        return [self.population[i] for i in selected_indices]
+
+    def get_elites(self, k: int) -> List[Candidate]:
+        """Simple top-k selection for Elitism."""
         sorted_pop = sorted(self.population, key=lambda x: x.score, reverse=True)
-        return sorted_pop[:top_k]
+        return sorted_pop[:k]
 
     def prune_population(self):
-        """
-        Keeps population within max_pop_size (Survival of the fittest).
-        """
-        # Sort descending
-        sorted_pop = sorted(self.population, key=lambda x: x.score, reverse=True)
-        # Keep top N
+        # Keep unique queries to maintain diversity
+        unique = {c.query: c for c in self.population}.values()
+        sorted_pop = sorted(unique, key=lambda x: x.score, reverse=True)
         self.population = sorted_pop[:self.max_pop_size]
 
-    def _update_best(self, candidate):
-        if self.global_best is None or candidate.score > self.global_best.score:
-            self.global_best = candidate
-        
-        # Optional: Save to archive if score is decent
-        if candidate.score > 5.0:
-            self.archive.append(candidate)
-
-    def get_best(self) -> Optional[Candidate]:
+    def get_best(self):
         return self.global_best
 
 
