@@ -14,7 +14,7 @@ from collections import deque
 import random
 
 from src.adaptive_attack.Search_based.scorer import BaseScorer
-from src.adaptive_attack.Search_based.mutator import BaseMutator, AutoDanMutator
+from src.adaptive_attack.Search_based.mutator import BaseMutator, LLMRefinementMutator, AutoDANMutator
 from src.adaptive_attack.Search_based.storage import SearchStorage, Candidate, AutoDanStorage
 from src.agents.sliding_window_agent import SlidingWindowWebAgent
 from src.agents.rag_agent import RAGWebAgent
@@ -257,7 +257,7 @@ class TapSlidingWindowController(SearchController):
 class AutoDANSlidingWindowController(SearchController):
     def __init__(self,
         agent: SlidingWindowWebAgent,
-        mutator: AutoDanMutator = None,
+        mutator: AutoDANMutator = None,
         scorer: BaseScorer = None,
         storage: AutoDanStorage = None,
         population_size: int = 20, 
@@ -676,7 +676,7 @@ class TapRAGController(SearchController):
 class AutoDANRAGController(SearchController):
     def __init__(self,
         agent: RAGWebAgent,
-        mutator: AutoDanMutator = None,
+        mutator: AutoDANMutator = None,
         scorer: BaseScorer = None,
         storage: AutoDanStorage = None,
         population_size: int = 20, 
