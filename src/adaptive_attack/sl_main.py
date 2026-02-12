@@ -190,6 +190,13 @@ def main_search_based_experiment(
         remain_budget = remain_budget - exposure_summary["optimization_steps"]
         logger.info(f"Used {exposure_summary['optimization_steps']} optimization steps, {remain_budget} remaining")
         
+        # Transform metrics to match expected format for plotting
+        for result in exposure_results:
+            asr = result.get("asr", {})
+            result["exfiltration"] = asr.get("exfiltration", 0)
+            result["command_exec"] = asr.get("command_exec", 0)
+            result["payload_in_memory_count"] = result.get("write_into_memory", False)
+        
         all_exposure_results.extend(exposure_results)
         all_exposure_logs.extend(exposure_logs)
         all_exposure_summary.append(exposure_summary)
@@ -228,6 +235,13 @@ def main_search_based_experiment(
         # Deduct only the optimization steps from budget
         remain_budget = remain_budget - trigger_summary["optimization_steps"]
         logger.info(f"Used {trigger_summary['optimization_steps']} optimization steps, {remain_budget} remaining")
+        
+        # Transform metrics to match expected format for plotting
+        for result in trigger_results:
+            asr = result.get("asr", {})
+            result["exfiltration"] = asr.get("exfiltration", 0)
+            result["command_exec"] = asr.get("command_exec", 0)
+            result["payload_in_memory_count"] = result.get("write_into_memory", False)
         
         all_trigger_results.extend(trigger_results)
         all_trigger_logs.extend(trigger_logs)
