@@ -22,9 +22,9 @@ def plot_sliding_window_metrics(exposure_metrics: List[Dict[str, Any]], trigger_
             "trigger_round": i + 1,
             "payload_in_memory_count": payload_in_memory_count,
             "reload_payload_times": reload_payload_times,
-            "exfiltration": exfiltration_detected,
-            "command_exec": command_exec_detected,
-            "asr_success": exfiltration_detected or command_exec_detected,
+            "exfiltration": exfiltration,
+            "command_exec": command_exec,
+            "asr_success": exfiltration or command_exec,
             "full_metrics": step_metrics
         },
         ...]
@@ -77,8 +77,8 @@ def plot_sliding_window_metrics_multi_runs(
         
         for i, m in enumerate(trigger_metrics):
             trigger_persistence_all[run_idx, i] = 1 if m["payload_in_memory_count"] else 0
-            trigger_exfiltration_all[run_idx, i] = 1 if m.get("exfiltration_detected", False) else 0
-            trigger_command_exec_all[run_idx, i] = 1 if m.get("command_exec_detected", False) else 0
+            trigger_exfiltration_all[run_idx, i] = 1 if m.get("exfiltration", False) else 0
+            trigger_command_exec_all[run_idx, i] = 1 if m.get("command_exec", False) else 0
             trigger_reload_times_all[run_idx, i] = m.get("reload_payload_times", 0)
     
     # Compute mean and std
@@ -102,7 +102,7 @@ def plot_sliding_window_metrics_multi_runs(
     trigger_rounds = np.arange(n_exposure + 1, n_exposure + n_trigger + 1)
     
     # Create figure with four subplots
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 10))
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(24, 5))
     
     # Plot 1: Memory Persistence Rate
     for run_idx in range(n_runs):

@@ -94,12 +94,8 @@ def plot_trigger_metrics(trigger_metrics: List[Dict[str, Any]], save_path: str):
     df = pd.concat(all_dfs, ignore_index=True)
     df = df.sort_values(by=["run_id", "trigger_round"])
 
-    df['cum_exfiltration'] = df['exfiltration'].cumsum()
-    df['cum_command_exec'] = df['command_exec'].cumsum()
-
-    # Create a figure with 7 subplots (arranged 4x2 or similar)
-    fig, axes = plt.subplots(4, 2, figsize=(16, 20))
-    axes = axes.flatten()
+    # Create a figure with 5 subplots (arranged in a single row)
+    fig, axes = plt.subplots(1, 5, figsize=(25, 5))
     sns.set_style("whitegrid")
 
     # 1. Payload Count (Line plot, avg with std)
@@ -126,17 +122,6 @@ def plot_trigger_metrics(trigger_metrics: List[Dict[str, Any]], save_path: str):
     # 5. Reload Times
     sns.lineplot(ax=axes[4], data=df, x="trigger_round", y="reload_payload_times", errorbar='sd')
     axes[4].set_title("Reload Times over Time")
-
-    # 6. Cumulative Exfiltration
-    sns.lineplot(ax=axes[5], data=df, x="trigger_round", y="cum_exfiltration", color='purple')
-    axes[5].set_title("Cumulative Exfiltration Successes")
-
-    # 7. Cumulative Command Exec
-    sns.lineplot(ax=axes[6], data=df, x="trigger_round", y="cum_command_exec", color='orange')
-    axes[6].set_title("Cumulative Command Exec Successes")
-
-    # Remove the empty 8th subplot
-    fig.delaxes(axes[7])
 
     plt.tight_layout()
     plt.savefig(save_path)
