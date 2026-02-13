@@ -5,6 +5,7 @@ from src.utils.str_utils import str2json
 from datasets import load_dataset
 import random
 from typing import List
+import requests
 
 from src.prompt_injection.seed_generator import generate_ipi_injections
 
@@ -15,6 +16,13 @@ def data_reader(dataset_name_or_path: str, num_questions: int = 10):
     if dataset_name_or_path == "data-for-agents/insta-150k-v1":
         ds = load_dataset(dataset_name_or_path)
         trigger_queries = [f"From {item['domain'], {item['task']}}" for item in ds['test']]
+        trigger_queries = random.sample(trigger_queries, num_questions)
+        return trigger_queries
+    elif dataset_name_or_path == "webarena":
+        url = "https://github.com/web-arena-x/webarena/blob/main/config_files/test.raw.json"
+        response = requests.get(url)
+        data = response.json()
+        trigger_queries = [f"{item['intent']}" for item in data]
         trigger_queries = random.sample(trigger_queries, num_questions)
         return trigger_queries
     else:
