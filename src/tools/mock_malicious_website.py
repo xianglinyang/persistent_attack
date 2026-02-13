@@ -218,16 +218,16 @@ def read_malicious(url: str) -> str:
     return mock_topics() + mock_benign_webpage_content() + mock_malicious_payload()
 
 
-def prepare_malicious_payload(method_name: str, attack_type: str, payload_dir: Path = None) -> None:
+def prepare_malicious_payload(method_name: str, attack_type: str) -> None:
     """
     Reset the malicious payload directory and write initial payload.
+    Uses global config for payload_dir (set via set_payload_dir()).
     
     Args:
         method_name: Attack method name (dpi, ipi, zombie)
         attack_type: Attack type (completion_real, etc.)
-        payload_dir: Custom payload directory path. If None, uses global config or default PAYLOAD_DIR.
     """
-    reset_malicious_payload(payload_dir)
+    reset_malicious_payload()
     if method_name == "dpi":
         payload = ""
     elif method_name == "ipi":
@@ -236,7 +236,7 @@ def prepare_malicious_payload(method_name: str, attack_type: str, payload_dir: P
         payload = generate_zombie_injections(attack_type)
     else:
         raise ValueError(f"Unknown method_name: {method_name}")
-    write_malicious_payload(payload, payload_dir)
+    write_malicious_payload(payload)
 
 
 if __name__ == "__main__":

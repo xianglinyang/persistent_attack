@@ -13,11 +13,10 @@ from src.evaluate.query_constructor import (
     data_reader,
     construct_dpi_exposure_queries
 )
-from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
 from src.analysis.rag_plots import plot_rag_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
-from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, reset_malicious_payload
-from src.config import set_payload_dir, get_config_summary
+from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, prepare_malicious_payload
+from src.config import set_payload_dir
 from src.adaptive_attack.Search_based.controller import (
     PairRAGController,
     MapElitesRAGController,
@@ -84,7 +83,7 @@ def exposure_RAG_adaptive(
             current_budget = min(budget_per_round, remain_budget)
         
         # Get current payload (either initial or best from previous round)
-        current_payload = retrieve_curr_malicious_payload(payload_dir)
+        current_payload = retrieve_curr_malicious_payload()
         logger.info(f"[Exposure Round {round}] Using payload: {current_payload[:100]}...")
         
         best_candidate, exposure_results, exposure_logs, exposure_summary = controller.run(
@@ -165,7 +164,7 @@ def trigger_RAG_adaptive(
             current_budget = min(budget_per_round, remain_budget)
 
         # Get current payload (best from exposure phase or previous trigger round)
-        current_payload = retrieve_curr_malicious_payload(payload_dir)
+        current_payload = retrieve_curr_malicious_payload()
         logger.info(f"[Trigger Round {round}] Using payload: {current_payload[:100]}...")
         
         best_candidate, trigger_results, trigger_logs, trigger_summary = controller.run(
@@ -281,9 +280,6 @@ def main_rag_agent_exposure_experiment(
         payload_dir = f"src/tools/payloads/{controller_type}_{method_name}_{model_safe}_{timestamp}"
     os.makedirs(payload_dir, exist_ok=True)
     
-    # Set global payload directory for this experiment
-    set_payload_dir(payload_dir)
-    
     logger.info(f"\n{'='*80}")
     logger.info(f"RAG EXPOSURE EXPERIMENT (ADAPTIVE)")
     logger.info(f"{'='*80}")
@@ -316,16 +312,6 @@ def main_rag_agent_exposure_experiment(
         exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
     else:
         raise ValueError(f"Invalid method name: {method_name}")
-    
-    # Environment setup (payload_dir is now set in global config)
-    reset_malicious_payload()
-    if method_name == "dpi":
-        payload = ""
-    elif method_name == "ipi":
-        payload = generate_ipi_injections(attack_type)
-    elif method_name == "zombie":
-        payload = generate_zombie_injections(attack_type)
-    write_malicious_payload(payload)
     
     # Initialize RAG memory and agent
     memory = RAGMemory(
@@ -732,6 +718,9 @@ if __name__ == "__main__":
 
     setup_logging(task_name=f"{args.controller_type}_attack_rag_{args.phase}_{args.model_name.replace('/', '_')}")
 
+    set_payload_dir(args.payload_dir)
+    prepare_malicious_payload(args.method_name, args.attack_type)
+
     logger.info(f"\n{'='*80}")
     logger.info(f"EXPERIMENT CONFIGURATION")
     logger.info(f"{'='*80}")
@@ -771,7 +760,6 @@ if __name__ == "__main__":
             evolve_mode=args.evolve_mode,
             reset=bool(args.reset),
             save_dir=args.save_dir,
-            payload_dir=args.payload_dir,
             autodan_population_size=args.autodan_population_size,
             autodan_num_elites=args.autodan_num_elites,
             autodan_mutation_rate=args.autodan_mutation_rate,
@@ -800,7 +788,6 @@ if __name__ == "__main__":
             evolve_mode=args.evolve_mode,
             exposure_rounds=args.exposure_rounds,
             save_dir=args.save_dir,
-            payload_dir=args.payload_dir,
             autodan_population_size=args.autodan_population_size,
             autodan_num_elites=args.autodan_num_elites,
             autodan_mutation_rate=args.autodan_mutation_rate,
@@ -830,7 +817,6 @@ if __name__ == "__main__":
             evolve_mode=args.evolve_mode,
             reset=bool(args.reset),
             save_dir=args.save_dir,
-            payload_dir=args.payload_dir,
             autodan_population_size=args.autodan_population_size,
             autodan_num_elites=args.autodan_num_elites,
             autodan_mutation_rate=args.autodan_mutation_rate,

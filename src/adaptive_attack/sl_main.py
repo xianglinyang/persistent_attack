@@ -12,11 +12,10 @@ from src.evaluate.query_constructor import (
     data_reader,
     construct_dpi_exposure_queries
 )
-from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
-from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, reset_malicious_payload
-from src.config import set_payload_dir, get_config_summary
+from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, prepare_malicious_payload
+from src.config import set_payload_dir
 from src.adaptive_attack.Search_based.controller import (
     PairSlidingWindowController,
     MapElitesSlidingWindowController,
@@ -52,7 +51,6 @@ def main_search_based_experiment(
     optimize_payload: bool = True,
     save_dir: str = "results/pair_payload",
     controller_type: str = "pair",
-    payload_dir: str = None,
     # AutoDAN specific parameters
     autodan_population_size: int = 20,
     autodan_num_elites: int = 2,
@@ -87,16 +85,6 @@ def main_search_based_experiment(
         Only the optimization steps count against total_budget.
         For AutoDAN, budget_per_round represents the number of generations.
     """
-    # Create unique payload directory for this experiment
-    if payload_dir is None:
-        import time
-        model_safe = model_name.replace("/", "_")
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        payload_dir = f"src/tools/payloads/{controller_type}_{method_name}_{model_safe}_{attack_type}_{timestamp}"
-    os.makedirs(payload_dir, exist_ok=True)
-    
-    # Set global payload directory for this experiment
-    set_payload_dir(payload_dir)
     
     logger.info(f"\n{'='*80}")
     logger.info(f"{controller_type.upper()} Attack - {'Payload' if optimize_payload else 'Query'} Optimization")
@@ -138,16 +126,6 @@ def main_search_based_experiment(
     trigger_queries = construct_trigger_queries(queries[exposure_rounds:])
     remain_budget = total_budget
 
-    # environment setup (payload_dir is now set in global config)
-    reset_malicious_payload()
-    if method_name == "dpi":
-        payload = ""
-    elif method_name == "ipi":
-        payload = generate_ipi_injections(attack_type)
-    elif method_name == "zombie":
-        payload = generate_zombie_injections(attack_type)
-    write_malicious_payload(payload)
-    
     # 1. Initialize agent
     memory = SlidingWindowMemory(window_size=window_size)
     llm = load_model(model_name)
@@ -272,7 +250,7 @@ def main_search_based_experiment(
             current_budget = min(budget_per_round, remain_budget)
 
         # Get current payload (best from exposure phase or previous trigger round)
-        current_payload = retrieve_curr_malicious_payload(payload_dir)
+        current_payload = retrieve_curr_malicious_payload()
         logger.info(f"[Trigger Round {round}] Using payload: {current_payload[:100]}...")
         
         best_candidate, trigger_results, trigger_logs, trigger_summary = controller.run(
@@ -378,6 +356,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     setup_logging(task_name=f"{args.controller_type}_attack_payload_opt_{args.model_name.replace('/', '_')}")
+
+    # Set global payload directory for this experiment
+    set_payload_dir(args.payload_dir)
+    prepare_malicious_payload(args.method_name, args.attack_type)
+    
 
     # Payload optimization mode
     logger.info(f"Running {args.controller_type.upper()} attack with PAYLOAD optimization")
