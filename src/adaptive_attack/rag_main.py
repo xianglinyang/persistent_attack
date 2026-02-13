@@ -124,6 +124,9 @@ def trigger_RAG_adaptive(
     evolve_mode: str = "raw",
     top_k: int = 20,
     payload_dir: str = None,
+    detection_guard: bool = False,
+    detection_guard_model_name: str = None,
+    instruction_guard_name: str = "raw",
 ) -> Tuple[List[Dict], List[Dict], List[Dict]]:
     """
     Run adaptive trigger phase and optimize attack execution.
@@ -371,12 +374,12 @@ def main_rag_agent_exposure_experiment(
     # Save results if save_dir provided
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        save_name = model_name.replace("/", "_")
+        save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
         controller_suffix = controller_type.lower()
         
         save_exposure_metrics(
             exposure_metrics, all_exposure_logs,
-            os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_adaptive.json")
+            os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json")
         )
         logger.info(f"✓ Exposure metrics saved to {save_dir}")
     
@@ -394,6 +397,8 @@ def main_rag_agent_trigger_experiment(
     model_name: str = "google/gemini-2.5-flash",
     dataset_name_or_path: str = "data-for-agents/insta-150k-v1",
     trigger_rounds: int = 10,
+    attack_type: str = "completion_real",
+    method_name: str = "zombie",
     budget_per_round: int = 10,
     total_budget: int = 20,
     max_steps: int = 10,
@@ -495,17 +500,20 @@ def main_rag_agent_trigger_experiment(
         evolve_mode=evolve_mode,
         top_k=top_k,
         payload_dir=payload_dir,
+        detection_guard=detection_guard,
+        detection_guard_model_name=detection_guard_model_name,
+        instruction_guard_name=instruction_guard_name,
     )
     
     # Save results if save_dir provided
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        save_name = model_name.replace("/", "_")
+        save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
         controller_suffix = controller_type.lower()
         
         save_trigger_metrics(
             trigger_metrics, all_trigger_logs,
-            os.path.join(save_dir, f"metrics_trigger_{save_name}_{controller_suffix}_adaptive.json")
+            os.path.join(save_dir, f"metrics_trigger_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json")
         )
         logger.info(f"✓ Trigger metrics saved to {save_dir}")
     
@@ -625,20 +633,20 @@ def main_rag_agent_both_experiment(
     
     # Save combined results
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_")
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
     controller_suffix = controller_type.lower()
     
     save_exposure_metrics(
         exposure_metrics, all_exposure_logs,
-        os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_adaptive.json")
+        os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json")
     )
     save_trigger_metrics(
         trigger_metrics, all_trigger_logs,
-        os.path.join(save_dir, f"metrics_trigger_{save_name}_{controller_suffix}_adaptive.json")
+        os.path.join(save_dir, f"metrics_trigger_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json")
     )
     plot_rag_metrics_multi_runs(
         [exposure_metrics], [trigger_metrics],
-        save_path=os.path.join(save_dir, f"attack_{save_name}_{controller_suffix}_adaptive.png")
+        save_path=os.path.join(save_dir, f"attack_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.png")
     )
     
     logger.info(f"\n✅ Both phases complete!")
@@ -770,6 +778,8 @@ if __name__ == "__main__":
             model_name=args.model_name,
             dataset_name_or_path=args.dataset_name_or_path,
             trigger_rounds=args.trigger_rounds,
+            attack_type=args.attack_type,
+            method_name=args.method_name,
             budget_per_round=args.budget_per_round,
             total_budget=args.total_budget,
             max_steps=args.max_steps,

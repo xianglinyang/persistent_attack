@@ -301,17 +301,16 @@ def main_search_based_experiment(
     
     # Save results
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_")
-    mode_suffix = "payload_opt" if optimize_payload else "query_opt"
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
     controller_suffix = controller_type.lower()
     
     save_exposure_metrics(all_exposure_results, all_exposure_logs, 
-                         os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_{mode_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json"))
+                         os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json"))
     save_trigger_metrics(all_trigger_results, all_trigger_logs, 
-                        os.path.join(save_dir, f"metrics_trigger_{save_name}_{controller_suffix}_{mode_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json"))
+                        os.path.join(save_dir, f"metrics_trigger_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json"))
     plot_sliding_window_metrics_multi_runs(
         [all_exposure_results], [all_trigger_results],
-        save_path=os.path.join(save_dir, f"attack_{save_name}_{controller_suffix}_{mode_suffix}.png")
+        save_path=os.path.join(save_dir, f"attack_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.png")
     )
     
     overall_summary = {
