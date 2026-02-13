@@ -11,10 +11,12 @@ from src.evaluate.query_constructor import (
     construct_exposure_queries, 
     construct_trigger_queries, 
     data_reader,
+    construct_dpi_exposure_queries
 )
+from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
 from src.analysis.rag_plots import plot_rag_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
-from src.tools.mock_malicious_website import retrieve_curr_malicious_payload
+from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, reset_malicious_payload
 from src.adaptive_attack.Search_based.controller import (
     PairRAGController,
     MapElitesRAGController,
@@ -43,6 +45,7 @@ def exposure_RAG_adaptive(
     total_budget: int,
     evolve_mode: str = "raw",
     top_k: int = 20,
+    payload_dir: str = None,
 ) -> Tuple[List[Dict], List[Dict], List[Dict], int]:
     """
     Run adaptive exposure phase and optimize malicious payload injection.
@@ -79,7 +82,10 @@ def exposure_RAG_adaptive(
         else:
             current_budget = min(budget_per_round, remain_budget)
         
-        current_payload = retrieve_curr_malicious_payload()
+        # Get current payload (either initial or best from previous round)
+        current_payload = retrieve_curr_malicious_payload(payload_dir)
+        logger.info(f"[Exposure Round {round}] Using payload: {current_payload[:100]}...")
+        
         best_candidate, exposure_results, exposure_logs, exposure_summary = controller.run(
             init_payload=current_payload,
             init_query=exposure_queries[round - 1],
@@ -89,6 +95,12 @@ def exposure_RAG_adaptive(
             evolve_mode=evolve_mode,
             top_k=top_k,
         )
+        
+        # Update payload with the best candidate for next round
+        if best_candidate and hasattr(best_candidate, 'payload'):
+            logger.info(f"[Exposure Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
+            write_malicious_payload(best_candidate.payload, payload_dir)
+            logger.info(f"[Exposure Round {round}] New payload: {best_candidate.payload[:100]}...")
         
         remain_budget = remain_budget - exposure_summary["optimization_steps"]
         logger.info(f"Used {exposure_summary['optimization_steps']} optimization steps, {remain_budget} remaining")
@@ -111,6 +123,7 @@ def trigger_RAG_adaptive(
     exposure_rounds: int,
     evolve_mode: str = "raw",
     top_k: int = 20,
+    payload_dir: str = None,
 ) -> Tuple[List[Dict], List[Dict], List[Dict]]:
     """
     Run adaptive trigger phase and optimize attack execution.
@@ -147,7 +160,10 @@ def trigger_RAG_adaptive(
         else:
             current_budget = min(budget_per_round, remain_budget)
 
-        current_payload = retrieve_curr_malicious_payload()
+        # Get current payload (best from exposure phase or previous trigger round)
+        current_payload = retrieve_curr_malicious_payload(payload_dir)
+        logger.info(f"[Trigger Round {round}] Using payload: {current_payload[:100]}...")
+        
         best_candidate, trigger_results, trigger_logs, trigger_summary = controller.run(
             init_payload=current_payload,
             init_query=trigger_queries[round - 1],
@@ -157,6 +173,12 @@ def trigger_RAG_adaptive(
             evolve_mode=evolve_mode,
             top_k=top_k,
         )
+        
+        # Update payload with the best candidate for next round
+        if best_candidate and hasattr(best_candidate, 'payload'):
+            logger.info(f"[Trigger Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
+            write_malicious_payload(best_candidate.payload, payload_dir)
+            logger.info(f"[Trigger Round {round}] New payload: {best_candidate.payload[:100]}...")
         
         remain_budget = remain_budget - trigger_summary["optimization_steps"]
         logger.info(f"Used {trigger_summary['optimization_steps']} optimization steps, {remain_budget} remaining")
@@ -215,7 +237,10 @@ def create_controller(controller_type: str, agent, attacker_model_name: str,
 # ========================================
 def main_rag_agent_exposure_experiment(
     model_name: str = "google/gemini-2.5-flash",
+    dataset_name_or_path: str = "data-for-agents/insta-150k-v1",
     exposure_rounds: int = 10,
+    attack_type: str = "completion_real",
+    method_name: str = "zombie",
     budget_per_round: int = 10,
     total_budget: int = 20,
     max_steps: int = 10,
@@ -232,6 +257,7 @@ def main_rag_agent_exposure_experiment(
     evolve_mode: str = "raw",
     reset: bool = False,
     save_dir: str = None,
+    payload_dir: str = None,
     autodan_population_size: int = 20,
     autodan_num_elites: int = 2,
     autodan_mutation_rate: float = 0.1,
@@ -243,10 +269,20 @@ def main_rag_agent_exposure_experiment(
     Returns:
         Tuple of (exposure_metrics, all_exposure_logs, remain_budget)
     """
+    # Create unique payload directory for this experiment
+    if payload_dir is None:
+        import time
+        model_safe = model_name.replace("/", "_")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        payload_dir = f"src/tools/payloads/{controller_type}_{method_name}_{model_safe}_{timestamp}"
+    os.makedirs(payload_dir, exist_ok=True)
+    
     logger.info(f"\n{'='*80}")
     logger.info(f"RAG EXPOSURE EXPERIMENT (ADAPTIVE)")
     logger.info(f"{'='*80}")
     logger.info(f"Target Model: {model_name}")
+    logger.info(f"Attack Type: {attack_type}")
+    logger.info(f"Method Name: {method_name}")
     logger.info(f"Attacker Model: {attacker_model_name}")
     logger.info(f"Controller Type: {controller_type}")
     logger.info(f"Exposure Rounds: {exposure_rounds}")
@@ -255,14 +291,34 @@ def main_rag_agent_exposure_experiment(
     logger.info(f"DB Path: {db_path}")
     logger.info(f"Top K: {top_k}")
     logger.info(f"Evolve Mode: {evolve_mode}")
+    logger.info(f"Payload Directory: {payload_dir}")
     logger.info(f"Detection guard: {detection_guard}")
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
     logger.info(f"Instruction guard: {instruction_guard_name}")
     logger.info(f"{'='*80}\n")
     
-    # Prepare queries
-    exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    # 0. Prepare queries
+    queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds)
+    if method_name == "dpi":
+        exposure_queries = queries[:exposure_rounds]
+        exposure_queries = construct_dpi_exposure_queries(attack_type, exposure_queries)
+    elif method_name == "ipi":
+        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    elif method_name == "zombie":
+        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    else:
+        raise ValueError(f"Invalid method name: {method_name}")
+    
+    # Environment setup
+    reset_malicious_payload(payload_dir)
+    if method_name == "dpi":
+        payload = ""
+    elif method_name == "ipi":
+        payload = generate_ipi_injections(attack_type)
+    elif method_name == "zombie":
+        payload = generate_zombie_injections(attack_type)
+    write_malicious_payload(payload, payload_dir)
     
     # Initialize RAG memory and agent
     memory = RAGMemory(
@@ -309,6 +365,7 @@ def main_rag_agent_exposure_experiment(
         total_budget=total_budget,
         evolve_mode=evolve_mode,
         top_k=top_k,
+        payload_dir=payload_dir,
     )
     
     # Save results if save_dir provided
@@ -353,6 +410,7 @@ def main_rag_agent_trigger_experiment(
     evolve_mode: str = "raw",
     exposure_rounds: int = 10,
     save_dir: str = None,
+    payload_dir: str = None,
     autodan_population_size: int = 20,
     autodan_num_elites: int = 2,
     autodan_mutation_rate: float = 0.1,
@@ -365,6 +423,11 @@ def main_rag_agent_trigger_experiment(
     Returns:
         Tuple of (trigger_metrics, all_trigger_logs)
     """
+    # Payload directory (should be provided if running trigger-only after exposure)
+    if payload_dir is None:
+        logger.warning("No payload_dir provided for trigger-only experiment. Using default directory.")
+        payload_dir = "src/tools/payloads"
+    
     logger.info(f"\n{'='*80}")
     logger.info(f"RAG TRIGGER EXPERIMENT (ADAPTIVE)")
     logger.info(f"{'='*80}")
@@ -378,6 +441,7 @@ def main_rag_agent_trigger_experiment(
     logger.info(f"Top K: {top_k}")
     logger.info(f"Evolve Mode: {evolve_mode}")
     logger.info(f"Exposure Rounds (snapshot): {exposure_rounds}")
+    logger.info(f"Payload Directory: {payload_dir}")
     logger.info(f"Detection guard: {detection_guard}")
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
@@ -385,7 +449,8 @@ def main_rag_agent_trigger_experiment(
     logger.info(f"{'='*80}\n")
     
     # Prepare queries
-    trigger_queries = data_reader(dataset_name_or_path, num_questions=trigger_rounds)
+    trigger_queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds+trigger_rounds)
+    trigger_queries = trigger_queries[exposure_rounds:]
     trigger_queries = construct_trigger_queries(trigger_queries)
     
     # Initialize RAG memory and agent
@@ -429,6 +494,7 @@ def main_rag_agent_trigger_experiment(
         exposure_rounds=exposure_rounds,
         evolve_mode=evolve_mode,
         top_k=top_k,
+        payload_dir=payload_dir,
     )
     
     # Save results if save_dir provided
@@ -457,6 +523,8 @@ def main_rag_agent_both_experiment(
     dataset_name_or_path: str = "data-for-agents/insta-150k-v1",
     exposure_rounds: int = 10,
     trigger_rounds: int = 10,
+    attack_type: str = "completion_real",
+    method_name: str = "zombie",
     budget_per_round: int = 10,
     total_budget: int = 20,
     max_steps: int = 10,
@@ -473,6 +541,7 @@ def main_rag_agent_both_experiment(
     evolve_mode: str = "raw",
     reset: bool = False,
     save_dir: str = "results/search_based_rag",
+    payload_dir: str = None,
     autodan_population_size: int = 20,
     autodan_num_elites: int = 2,
     autodan_mutation_rate: float = 0.1,
@@ -495,7 +564,10 @@ def main_rag_agent_both_experiment(
     
     exposure_metrics, all_exposure_logs, remain_budget = main_rag_agent_exposure_experiment(
         model_name=model_name,
+        dataset_name_or_path=dataset_name_or_path,
         exposure_rounds=exposure_rounds,
+        attack_type=attack_type,
+        method_name=method_name,
         budget_per_round=budget_per_round,
         total_budget=total_budget,
         max_steps=max_steps,
@@ -512,6 +584,7 @@ def main_rag_agent_both_experiment(
         evolve_mode=evolve_mode,
         reset=reset,
         save_dir=None,  # Don't save yet
+        payload_dir=payload_dir,
         autodan_population_size=autodan_population_size,
         autodan_num_elites=autodan_num_elites,
         autodan_mutation_rate=autodan_mutation_rate,
@@ -543,6 +616,7 @@ def main_rag_agent_both_experiment(
         evolve_mode=evolve_mode,
         exposure_rounds=exposure_rounds,
         save_dir=None,  # Don't save yet
+        payload_dir=payload_dir,
         autodan_population_size=autodan_population_size,
         autodan_num_elites=autodan_num_elites,
         autodan_mutation_rate=autodan_mutation_rate,
@@ -603,6 +677,17 @@ if __name__ == "__main__":
     parser.add_argument("--budget_per_round", type=int, default=10)
     parser.add_argument("--total_budget", type=int, default=20)
     
+    # Attack settings
+    parser.add_argument("--attack_type", type=str, default="completion_real", 
+                       choices=["completion_real", "completion_realcmb", "completion_base64", 
+                               "completion_2hash", "completion_1hash", "completion_0hash", 
+                               "completion_upper", "completion_title", "completion_nospace", 
+                               "completion_nocolon", "completion_typo", "completion_similar", 
+                               "completion_ownlower", "completion_owntitle", "completion_ownhash", 
+                               "completion_owndouble"])
+    parser.add_argument("--method_name", type=str, default="zombie", 
+                       choices=["dpi", "ipi", "zombie"])
+    
     # Agent settings
     parser.add_argument("--max_steps", type=int, default=10)
     
@@ -628,6 +713,8 @@ if __name__ == "__main__":
     
     # Save settings
     parser.add_argument("--save_dir", type=str, default="results/search_based_rag")
+    parser.add_argument("--payload_dir", type=str, default=None,
+                       help="Custom payload directory. If not provided, a unique directory will be created automatically.")
     
     args = parser.parse_args()
 
@@ -652,7 +739,10 @@ if __name__ == "__main__":
     if args.phase == "exposure":
         main_rag_agent_exposure_experiment(
             model_name=args.model_name,
+            dataset_name_or_path=args.dataset_name_or_path,
             exposure_rounds=args.exposure_rounds,
+            attack_type=args.attack_type,
+            method_name=args.method_name,
             budget_per_round=args.budget_per_round,
             total_budget=args.total_budget,
             max_steps=args.max_steps,
@@ -669,6 +759,7 @@ if __name__ == "__main__":
             evolve_mode=args.evolve_mode,
             reset=bool(args.reset),
             save_dir=args.save_dir,
+            payload_dir=args.payload_dir,
             autodan_population_size=args.autodan_population_size,
             autodan_num_elites=args.autodan_num_elites,
             autodan_mutation_rate=args.autodan_mutation_rate,
@@ -695,6 +786,7 @@ if __name__ == "__main__":
             evolve_mode=args.evolve_mode,
             exposure_rounds=args.exposure_rounds,
             save_dir=args.save_dir,
+            payload_dir=args.payload_dir,
             autodan_population_size=args.autodan_population_size,
             autodan_num_elites=args.autodan_num_elites,
             autodan_mutation_rate=args.autodan_mutation_rate,
@@ -706,6 +798,8 @@ if __name__ == "__main__":
             dataset_name_or_path=args.dataset_name_or_path,
             exposure_rounds=args.exposure_rounds,
             trigger_rounds=args.trigger_rounds,
+            attack_type=args.attack_type,
+            method_name=args.method_name,
             budget_per_round=args.budget_per_round,
             total_budget=args.total_budget,
             max_steps=args.max_steps,
@@ -722,6 +816,7 @@ if __name__ == "__main__":
             evolve_mode=args.evolve_mode,
             reset=bool(args.reset),
             save_dir=args.save_dir,
+            payload_dir=args.payload_dir,
             autodan_population_size=args.autodan_population_size,
             autodan_num_elites=args.autodan_num_elites,
             autodan_mutation_rate=args.autodan_mutation_rate,

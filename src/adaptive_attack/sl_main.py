@@ -10,10 +10,12 @@ from src.evaluate.query_constructor import (
     construct_exposure_queries, 
     construct_trigger_queries, 
     data_reader,
+    construct_dpi_exposure_queries
 )
+from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
-from src.tools.mock_malicious_website import retrieve_curr_malicious_payload
+from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, reset_malicious_payload
 from src.adaptive_attack.Search_based.controller import (
     PairSlidingWindowController,
     MapElitesSlidingWindowController,
@@ -36,6 +38,8 @@ def main_search_based_experiment(
     dataset_name_or_path: str = "data-for-agents/insta-150k-v1",
     exposure_rounds: int = 10,
     trigger_rounds: int = 10,
+    attack_type: str = "completion_real",
+    method_name: str = "zombie",
     window_size: int = 30,
     budget_per_round: int = 10,
     total_budget: int = 20,
@@ -47,6 +51,7 @@ def main_search_based_experiment(
     optimize_payload: bool = True,
     save_dir: str = "results/pair_payload",
     controller_type: str = "pair",
+    payload_dir: str = None,
     # AutoDAN specific parameters
     autodan_population_size: int = 20,
     autodan_num_elites: int = 2,
@@ -81,10 +86,20 @@ def main_search_based_experiment(
         Only the optimization steps count against total_budget.
         For AutoDAN, budget_per_round represents the number of generations.
     """
+    # Create unique payload directory for this experiment
+    if payload_dir is None:
+        import time
+        model_safe = model_name.replace("/", "_")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        payload_dir = f"src/tools/payloads/{controller_type}_{method_name}_{model_safe}_{attack_type}_{timestamp}"
+    os.makedirs(payload_dir, exist_ok=True)
+    
     logger.info(f"\n{'='*80}")
     logger.info(f"{controller_type.upper()} Attack - {'Payload' if optimize_payload else 'Query'} Optimization")
     logger.info(f"{'='*80}")
     logger.info(f"Target Model: {model_name}")
+    logger.info(f"Attack Type: {attack_type}")
+    logger.info(f"Method Name: {method_name}")
     logger.info(f"Attacker Model: {attacker_model_name}")
     logger.info(f"Controller Type: {controller_type}")
     logger.info(f"Exposure Rounds: {exposure_rounds}")
@@ -92,6 +107,7 @@ def main_search_based_experiment(
     logger.info(f"Budget per Round: {budget_per_round}")
     logger.info(f"Total Budget: {total_budget}")
     logger.info(f"Window Size: {window_size}")
+    logger.info(f"Payload Directory: {payload_dir}")
     logger.info(f"Detection guard Enabled: {detection_guard}")
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
@@ -104,10 +120,29 @@ def main_search_based_experiment(
     logger.info(f"{'='*80}\n")
     
     # 0. Prepare queries
-    exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)  # Use 1 fixed query
-    trigger_queries = data_reader(dataset_name_or_path, num_questions=trigger_rounds)  # Use 1 fixed query
-    trigger_queries = construct_trigger_queries(trigger_queries)
+    queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds+trigger_rounds)
+    if method_name == "dpi":
+        exposure_queries = queries[:exposure_rounds]
+        exposure_queries = construct_dpi_exposure_queries(attack_type, exposure_queries)
+    elif method_name == "ipi":
+        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    elif method_name == "zombie":
+        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    else:
+        raise ValueError(f"Invalid method name: {method_name}")
+    
+    trigger_queries = construct_trigger_queries(queries[exposure_rounds:])
     remain_budget = total_budget
+
+    # environment setup
+    reset_malicious_payload(payload_dir)
+    if method_name == "dpi":
+        payload = ""
+    elif method_name == "ipi":
+        payload = generate_ipi_injections(attack_type)
+    elif method_name == "zombie":
+        payload = generate_zombie_injections(attack_type)
+    write_malicious_payload(payload, payload_dir)
     
     # 1. Initialize agent
     memory = SlidingWindowMemory(window_size=window_size)
@@ -177,14 +212,22 @@ def main_search_based_experiment(
         else:
             current_budget = min(budget_per_round, remain_budget)
         
-        # TODO: payload use the latest one or the best one
+        # Get current payload (either initial or best from previous round)
         current_payload = retrieve_curr_malicious_payload()
+        logger.info(f"[Exposure Round {round}] Using payload: {current_payload[:100]}...")
+        
         best_candidate, exposure_results, exposure_logs, exposure_summary = controller.run(
             init_payload=current_payload,
             init_query=exposure_queries[round - 1],
             budget=current_budget,
             curr_period="exposure",
         )
+        
+        # Update payload with the best candidate for next round
+        if best_candidate and hasattr(best_candidate, 'payload'):
+            logger.info(f"[Exposure Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
+            write_malicious_payload(best_candidate.payload)
+            logger.info(f"[Exposure Round {round}] New payload: {best_candidate.payload[:100]}...")
         
         # Deduct only the optimization steps from budget
         remain_budget = remain_budget - exposure_summary["optimization_steps"]
@@ -224,13 +267,22 @@ def main_search_based_experiment(
         else:
             current_budget = min(budget_per_round, remain_budget)
 
-        current_payload = retrieve_curr_malicious_payload()
+        # Get current payload (best from exposure phase or previous trigger round)
+        current_payload = retrieve_curr_malicious_payload(payload_dir)
+        logger.info(f"[Trigger Round {round}] Using payload: {current_payload[:100]}...")
+        
         best_candidate, trigger_results, trigger_logs, trigger_summary = controller.run(
             init_payload=current_payload,
             init_query=trigger_queries[round - 1],
             budget=current_budget,
             curr_period="trigger",
         )
+        
+        # Update payload with the best candidate for next round
+        if best_candidate and hasattr(best_candidate, 'payload'):
+            logger.info(f"[Trigger Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
+            write_malicious_payload(best_candidate.payload, payload_dir)
+            logger.info(f"[Trigger Round {round}] New payload: {best_candidate.payload[:100]}...")
         
         # Deduct only the optimization steps from budget
         remain_budget = remain_budget - trigger_summary["optimization_steps"]
@@ -295,6 +347,10 @@ if __name__ == "__main__":
     # Agent settings
     parser.add_argument("--window_size", type=int, default=30)
     parser.add_argument("--max_steps", type=int, default=10)
+
+    # Attack settings
+    parser.add_argument("--attack_type", type=str, default="completion_real", choices=["completion_real", "completion_realcmb", "completion_base64", "completion_2hash", "completion_1hash", "completion_0hash", "completion_upper", "completion_title", "completion_nospace", "completion_nocolon", "completion_typo", "completion_similar", "completion_ownlower", "completion_owntitle", "completion_ownhash", "completion_owndouble"])
+    parser.add_argument("--method_name", type=str, default="zombie", choices=["dpi", "ipi", "zombie"])
     
     # Guard settings
     parser.add_argument("--detection_guard", type=int, default=0)
@@ -313,6 +369,8 @@ if __name__ == "__main__":
     
     # Save settings
     parser.add_argument("--save_dir", type=str, default="results/search_based")
+    parser.add_argument("--payload_dir", type=str, default=None,
+                       help="Custom payload directory. If not provided, a unique directory will be created automatically.")
     
     args = parser.parse_args()
 
@@ -325,6 +383,8 @@ if __name__ == "__main__":
         dataset_name_or_path=args.dataset_name_or_path,
         exposure_rounds=args.exposure_rounds,
         trigger_rounds=args.trigger_rounds,
+        attack_type=args.attack_type,
+        method_name=args.method_name,
         budget_per_round=args.budget_per_round,
         total_budget=args.total_budget,
         window_size=args.window_size,
@@ -336,6 +396,7 @@ if __name__ == "__main__":
         optimize_payload=True,
         save_dir=args.save_dir,
         controller_type=args.controller_type,
+        payload_dir=args.payload_dir,
         autodan_population_size=args.autodan_population_size,
         autodan_num_elites=args.autodan_num_elites,
         autodan_mutation_rate=args.autodan_mutation_rate,
