@@ -69,7 +69,7 @@ def generate_injections(attack_type: str, injected_prompt: str):
     return injected_prompt
 
 
-def generate_baseline_injections(attack_type: str):
+def generate_ipi_injections(attack_type: str):
     attack_ins = create_attack_instance(attack_type, injected_prompt=BASELINE_COMMAND)
     injected_prompt = attack_ins._get_completion_suffix()
     return injected_prompt

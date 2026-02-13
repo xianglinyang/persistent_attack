@@ -47,7 +47,6 @@ RAG Attack:
   - Run trigger queries (can be benign or malicious)
   - Track: payload count, recall@k + ASR metrics
 '''
-from pathlib import Path
 import os
 import logging
 import argparse
@@ -60,7 +59,10 @@ from src.evaluate.query_constructor import (
     construct_exposure_queries,
     construct_trigger_queries,
     data_reader,
+    construct_dpi_exposure_queries
 )
+from src.tools.mock_malicious_website import write_malicious_payload, reset_malicious_payload
+from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
 from src.utils.logging_utils import setup_logging
 
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
@@ -160,6 +162,8 @@ def trigger_SL(agent, trigger_queries):
 def main_sliding_window_agent_attack(
     model_name: str = "google/gemini-2.5-flash", 
     dataset_name_or_path: str = "data-for-agents/insta-150k-v1", 
+    attack_type: str = "completion_real",
+    method_name: str = "zombie",
     exposure_rounds: int = 3, 
     trigger_rounds: int = 10, 
     trigger_runs: int = 3, 
@@ -169,6 +173,7 @@ def main_sliding_window_agent_attack(
     detection_guard_model_name: str = None,
     instruction_guard_name: str = "raw",
     save_dir: str = "results",
+    payload_dir: str = None,
 ):
     """
     Main function for sliding window agent attack evaluation.
@@ -185,28 +190,51 @@ def main_sliding_window_agent_attack(
         guard_model_name: Guard model name (e.g., "openai/gpt-4.1-nano")
     """
     
-    print(f"\n{'='*80}")
-    print(f"Sliding Window Attack Evaluation")
-    print(f"{'='*80}")
-    print(f"Target Model: {model_name}")
-    print(f"Exposure Rounds: {exposure_rounds}")
-    print(f"Trigger Rounds: {trigger_rounds} × {trigger_runs} runs")
-    print(f"Window Size: {window_size}")
-    print(f"Detection guard Enabled: {detection_guard}")
+    logger.info(f"\n{'='*80}")
+    logger.info(f"Sliding Window Attack Evaluation")
+    logger.info(f"{'='*80}")
+    logger.info(f"Attack Type: {attack_type}")
+    logger.info(f"Method Name: {method_name}")
+    logger.info(f"Target Model: {model_name}")
+    logger.info(f"Exposure Rounds: {exposure_rounds}")
+    logger.info(f"Trigger Rounds: {trigger_rounds} × {trigger_runs} runs")
+    logger.info(f"Window Size: {window_size}")
+    logger.info(f"Detection guard Enabled: {detection_guard}")
     if detection_guard:
-        print(f"Detection guard model: {detection_guard_model_name}")
-    print(f"Instruction guard name: {instruction_guard_name}")
-    print(f"{'='*80}\n")
+        logger.info(f"Detection guard model: {detection_guard_model_name}")
+    logger.info(f"Instruction guard name: {instruction_guard_name}")
+    logger.info(f"{'='*80}\n")
     
+    # 0. Construct Queries + Setup Malicious Payload
+    queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds+trigger_rounds*trigger_runs)
     # exposure queries
-    exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    if method_name == "dpi":
+        exposure_queries = queries[:exposure_rounds]
+        exposure_queries = construct_dpi_exposure_queries(attack_type, exposure_queries)
+    elif method_name == "ipi":
+        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    elif method_name == "zombie":
+        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    else:
+        raise ValueError(f"Invalid method name: {method_name}")
 
     # trigger queries
-    trigger_queries = data_reader(dataset_name_or_path, num_questions=trigger_rounds*trigger_runs)
+    trigger_queries = queries[exposure_rounds:]
     trigger_queries = construct_trigger_queries(trigger_queries)
     trigger_queries = [trigger_queries[i:i+trigger_rounds] for i in range(0, len(trigger_queries), trigger_rounds)]
 
-    # Initialize the agent with guard
+    # environment setup
+    reset_malicious_payload(payload_dir)
+    if method_name == "dpi":
+        payload = ""
+    elif method_name == "ipi":
+        payload = generate_ipi_injections(attack_type)
+    elif method_name == "zombie":
+        payload = generate_zombie_injections(attack_type)
+    write_malicious_payload(payload, payload_dir)
+
+
+    # 1. Initialize the agent with guard
     memory = SlidingWindowMemory(window_size=window_size)
     llm = load_model(model_name)
     agent = SlidingWindowWebAgent(
@@ -244,7 +272,7 @@ def main_sliding_window_agent_attack(
 
     # Summary Period
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_")
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}"
     save_exposure_metrics(exposure_metrics, exposure_logs, os.path.join(save_dir, f"metrics_exposure_{save_name}.json"))
     save_trigger_metrics(all_trigger_metrics, all_trigger_logs, os.path.join(save_dir, f"metrics_trigger_{save_name}.json"))
 
@@ -259,6 +287,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="qwen/qwen3-235b-a22b-2507")
     parser.add_argument("--dataset_name_or_path", type=str, default="data-for-agents/insta-150k-v1")
+    parser.add_argument("--attack_type", type=str, default="completion_real")
+    parser.add_argument("--method_name", type=str, default="zombie", choices=["dpi", "ipi", "zombie"])
     parser.add_argument("--exposure_rounds", type=int, default=3)
     parser.add_argument("--trigger_rounds", type=int, default=50)
     parser.add_argument("--trigger_runs", type=int, default=3)
@@ -268,6 +298,7 @@ if __name__ == "__main__":
     parser.add_argument("--detection_guard_model_name", type=str, default="openai/gpt-4.1-nano")
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
     parser.add_argument("--save_dir", type=str, default="results")
+    parser.add_argument("--payload_dir", type=str, default=None, help="Custom payload directory path")
     args = parser.parse_args()
 
     setup_logging(task_name=f"sliding_window_attack_{args.model_name.replace('/', '_')}")
@@ -275,6 +306,8 @@ if __name__ == "__main__":
     main_sliding_window_agent_attack(
         model_name=args.model_name,
         dataset_name_or_path=args.dataset_name_or_path,
+        attack_type=args.attack_type,
+        method_name=args.method_name,
         exposure_rounds=args.exposure_rounds,
         trigger_rounds=args.trigger_rounds,
         trigger_runs=args.trigger_runs,
@@ -284,4 +317,5 @@ if __name__ == "__main__":
         detection_guard_model_name=args.detection_guard_model_name,
         instruction_guard_name=args.instruction_guard_name,
         save_dir=args.save_dir,
+        payload_dir=args.payload_dir,
     )

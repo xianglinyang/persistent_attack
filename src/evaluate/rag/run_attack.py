@@ -44,7 +44,10 @@ from src.evaluate.query_constructor import (
     construct_exposure_queries,
     data_reader,
     construct_trigger_queries,
+    construct_dpi_exposure_queries
 )
+from src.tools.mock_malicious_website import write_malicious_payload, reset_malicious_payload
+from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
 from src.utils.logging_utils import setup_logging
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.analysis.rag_plots import (
@@ -289,6 +292,8 @@ def compute_summary_RAG(exposure_metrics: List[Dict], trigger_metrics: List[Dict
 def main_rag_agent_exposure_experiment(
     model_name: str = "google/gemini-2.5-flash",
     exposure_rounds: int = 10,
+    attack_type: str = "completion_real",
+    method_name: str = "zombie",
     max_steps: int = 10,
     evolve_mode: str = "raw",
     db_path: str = "/data2/xianglin/zombie_agent/db_storage/msmarco",
@@ -305,6 +310,8 @@ def main_rag_agent_exposure_experiment(
     detection_guard_model_name: Optional[str] = None,
     # instruction guard knobs
     instruction_guard_name: str = "raw",
+    # payload directory
+    payload_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Experiment harness with:
@@ -316,10 +323,27 @@ def main_rag_agent_exposure_experiment(
     # -----------------------
     # Prepare queries
     # -----------------------
-    exposure_queries = construct_exposure_queries(
-        model_name="openai/gpt-4o-mini",
-        num_questions=exposure_rounds
-    )
+    if method_name == "dpi":
+        dataset_name_or_path = "data-for-agents/insta-150k-v1"
+        queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds)
+        exposure_queries = construct_dpi_exposure_queries(attack_type, queries)
+    elif method_name == "ipi":
+        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    elif method_name == "zombie":
+        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    else:
+        raise ValueError(f"Invalid method name: {method_name}")
+    
+    # environment setup
+    reset_malicious_payload(payload_dir)
+    if method_name == "dpi":
+        payload = ""
+    elif method_name == "ipi":
+        payload = generate_ipi_injections(attack_type)
+    elif method_name == "zombie":
+        payload = generate_zombie_injections(attack_type)
+    write_malicious_payload(payload, payload_dir)
+
     # -----------------------
     # Init memory + agent
     # -----------------------
@@ -450,6 +474,8 @@ def main_rag_agent_exposure_experiment(
 def main_rag_agent_trigger_experiment(
     model_name: str = "google/gemini-2.5-flash",
     dataset_name_or_path: str = "data-for-agents/insta-150k-v1",
+    attack_type: str = "completion_real",
+    method_name: str = "zombie",
     max_steps: int = 10,
     evolve_mode: str = "raw",
     db_path: str = "/data2/xianglin/zombie_agent/db_storage/msmarco",
@@ -478,7 +504,8 @@ def main_rag_agent_trigger_experiment(
     # -----------------------
     # Prepare trigger queries
     # -----------------------
-    trigger_queries = data_reader(dataset_name_or_path, num_questions=trigger_rounds*trigger_runs)
+    queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds+trigger_rounds*trigger_runs)
+    trigger_queries = queries[exposure_rounds:]
     trigger_queries = construct_trigger_queries(trigger_queries)
     trigger_queries = [trigger_queries[i:i+trigger_rounds] for i in range(0, len(trigger_queries), trigger_rounds)]
 
@@ -549,8 +576,8 @@ def main():
     
     # Phase control
     parser.add_argument("--phase", type=str, default="exposure", 
-                       choices=["exposure", "trigger"],
-                       help="Which phase to run: 'exposure' (default), 'trigger'")
+                       choices=["exposure", "trigger", "both"],
+                       help="Which phase to run: 'exposure' (default), 'trigger', 'both'")
     
     # Model and basic settings
     parser.add_argument("--model_name", type=str, default="google/gemini-2.5-flash")
@@ -559,6 +586,10 @@ def main():
     parser.add_argument("--evolve_mode", type=str, default="raw")
     parser.add_argument("--top_k", type=int, default=20)
     parser.add_argument("--save_dir", type=str)
+
+    # Attack settings
+    parser.add_argument("--attack_type", type=str, default="completion_real", choices=["completion_real", "completion_realcmb", "completion_base64", "completion_2hash", "completion_1hash", "completion_0hash", "completion_upper", "completion_title", "completion_nospace", "completion_nocolon", "completion_typo", "completion_similar", "completion_ownlower", "completion_owntitle", "completion_ownhash", "completion_owndouble"])
+    parser.add_argument("--method_name", type=str, default="zombie", choices=["dpi", "ipi", "zombie"])
     
     # Collection names
     parser.add_argument("--base_name", type=str, default="base")
@@ -583,6 +614,9 @@ def main():
     parser.add_argument("--detection_guard", type=int, default=0)
     parser.add_argument("--detection_guard_model_name", type=str, default=None)
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
+    
+    # Payload directory
+    parser.add_argument("--payload_dir", type=str, default=None, help="Custom payload directory path")
     
     args = parser.parse_args()
 
@@ -619,6 +653,8 @@ def main():
         
         exposure_metrics, all_exposure_logs = main_rag_agent_exposure_experiment(
             model_name=args.model_name,
+            attack_type=args.attack_type,
+            method_name=args.method_name,
             db_path=args.db_path,
             exposure_rounds=args.exposure_rounds,
             max_steps=args.max_steps,
@@ -633,6 +669,7 @@ def main():
             detection_guard=bool(args.detection_guard),
             detection_guard_model_name=args.detection_guard_model_name,
             instruction_guard_name=args.instruction_guard_name,
+            payload_dir=args.payload_dir,
         )
         
         logger.info(f"\n✅ Exposure phase complete!")
@@ -660,6 +697,8 @@ def main():
         agent, trigger_metrics, all_trigger_logs = main_rag_agent_trigger_experiment(
             model_name=args.model_name,
             dataset_name_or_path=args.dataset_name_or_path,
+            attack_type=args.attack_type,
+            method_name=args.method_name,
             max_steps=args.max_steps,
             evolve_mode=args.evolve_mode,
             db_path=args.db_path,
@@ -688,7 +727,7 @@ def main():
     logger.info("="*80)
     
     os.makedirs(args.save_dir, exist_ok=True)
-    model_nick_name = args.model_name.replace("/", "_")
+    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}"
     if args.phase == "exposure":
         save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, "exposure_metrics.json"))
         plot_exposure_metrics(exposure_metrics, os.path.join(args.save_dir, f"exposure_{model_nick_name}.png"))
