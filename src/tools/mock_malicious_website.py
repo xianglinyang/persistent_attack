@@ -1,10 +1,21 @@
 from sklearn.cluster import KMeans
 from sentence_transformers import SentenceTransformer
-from typing import List
+from typing import List, Tuple
 from datasets import load_dataset
 import random
 from sklearn.metrics import pairwise_distances_argmin_min
 import os
+import logging
+from pathlib import Path
+import re
+
+logger = logging.getLogger(__name__)
+
+# ------------------------------------------------------------
+# Payload Directory
+# ------------------------------------------------------------
+PAYLOAD_DIR = Path("src/tools/payloads")
+BENIGN_WEB_PAGE_PATH = Path("src/tools/mock_webpage_content.txt")
 
 # ------------------------------------------------------------
 # Semantic Space Attacker
@@ -72,20 +83,27 @@ def search_malicious():
 
 
 def mock_benign_webpage_content() -> str:
-    with open("src/tools/mock_webpage_content.txt", "r") as f:
+    with open(BENIGN_WEB_PAGE_PATH, "r") as f:
         return f.read()
 
-from pathlib import Path
-import re
-from typing import Tuple
 
-def get_latest_payload(payload_dir: str | Path) -> Tuple[int, Path, str]:
+def get_latest_payload(payload_dir: Path = None) -> Tuple[int, Path, str]:
     """
     返回 payloads 目录里 id 最大的 payload: (payload_id, file_path, content)
 
     期望文件名形如: malicious_payload_<id>.txt
+    
+    Args:
+        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
     """
-    payload_dir = Path(payload_dir)
+    if payload_dir is None:
+        payload_dir = PAYLOAD_DIR
+    else:
+        payload_dir = Path(payload_dir)
+    
+    # Ensure directory exists
+    payload_dir.mkdir(parents=True, exist_ok=True)
+    
     pattern = re.compile(r"^malicious_payload_(\d+)\.txt$")
 
     best_id = None
@@ -103,38 +121,82 @@ def get_latest_payload(payload_dir: str | Path) -> Tuple[int, Path, str]:
             best_path = p
 
     if best_id is None or best_path is None:
-        raise FileNotFoundError(f"No matched payload files in {payload_dir}")
+        return -1, payload_dir / "malicious_payload_none.txt", ""
 
     content = best_path.read_text(encoding="utf-8", errors="replace")
     return best_id, best_path, content
 
 
 # Improved
-def retrieve_curr_malicious_payload() -> str:
-    pid, path, payload = get_latest_payload("src/tools/payloads")
+def retrieve_curr_malicious_payload(payload_dir: Path = None) -> str:
+    """
+    Retrieve the current malicious payload.
+    
+    Args:
+        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
+    """
+    pid, path, payload = get_latest_payload(payload_dir)
     return payload
 
-def write_malicious_payload(new_payload: str) -> None:
+def write_malicious_payload(new_payload: str, payload_dir: Path = None) -> None:
     """
     Write a new payload to the payloads directory with incremented version number.
     
     Args:
         new_payload: The new payload content to write
+        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
     """
-    pid, path, old_payload = get_latest_payload("src/tools/payloads")
-    new_pid = pid + 1
-    new_path = path.parent / f"malicious_payload_{new_pid}.txt"
-    new_path.write_text(new_payload, encoding="utf-8", errors="replace")
-    print(f"[Payload] Written new payload version {new_pid} to {new_path}")
+    if payload_dir is None:
+        payload_dir = PAYLOAD_DIR
+    else:
+        payload_dir = Path(payload_dir)
+    
+    # Ensure directory exists
+    payload_dir.mkdir(parents=True, exist_ok=True)
+    
+    pid, path, old_payload = get_latest_payload(payload_dir)
+    if pid == -1:
+        new_path = payload_dir / "malicious_payload_0.txt"
+        new_path.write_text(new_payload, encoding="utf-8", errors="replace")
+        print(f"[Payload] Written new payload version 0 to {new_path}")
+        return
+    else:
+        new_pid = pid + 1
+        new_path = payload_dir / f"malicious_payload_{new_pid}.txt"
+        new_path.write_text(new_payload, encoding="utf-8", errors="replace")
+        print(f"[Payload] Written new payload version {new_pid} to {new_path}")
 
-def mock_malicious_payload() -> str:
+def reset_malicious_payload(payload_dir: Path = None):
+    """
+    Reset the malicious payload directory by deleting all payload files.
+    
+    Args:
+        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
+    """
+    if payload_dir is None:
+        payload_dir = PAYLOAD_DIR
+    else:
+        payload_dir = Path(payload_dir)
+    
+    # Ensure directory exists
+    payload_dir.mkdir(parents=True, exist_ok=True)
+    
+    # delete all files in the path
+    for file in os.listdir(payload_dir):
+        os.remove(os.path.join(payload_dir, file))
+    logger.info(f"[Payload] Reset malicious payload directory: {payload_dir}")
+
+def mock_malicious_payload(payload_dir: Path = None) -> str:
     """
     Dynamically loads the LATEST payload from the payloads directory.
     This ensures that every agent visit uses the most recent payload version.
+    
+    Args:
+        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
     """
-    pid, path, payload = get_latest_payload("src/tools/payloads")
+    pid, path, payload = get_latest_payload(payload_dir)
     print(f"[Website] Loading payload version {pid} from {path.name}")
-    return payload
+    return payload*5
 
 def mock_topics() -> str:
     proxy_queries = get_proxy_data(num=2000)
