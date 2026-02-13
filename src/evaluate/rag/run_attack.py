@@ -727,7 +727,7 @@ def main():
     logger.info("="*80)
     
     os.makedirs(args.save_dir, exist_ok=True)
-    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}"
+    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}" + f"_{args.dataset_name_or_path.replace("/", "_")}"
     if args.phase == "exposure":
         save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, "exposure_metrics.json"))
         plot_exposure_metrics(exposure_metrics, os.path.join(args.save_dir, f"exposure_{model_nick_name}.png"))

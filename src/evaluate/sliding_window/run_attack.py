@@ -272,7 +272,7 @@ def main_sliding_window_agent_attack(
 
     # Summary Period
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}"
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
     save_exposure_metrics(exposure_metrics, exposure_logs, os.path.join(save_dir, f"metrics_exposure_{save_name}.json"))
     save_trigger_metrics(all_trigger_metrics, all_trigger_logs, os.path.join(save_dir, f"metrics_trigger_{save_name}.json"))
 
