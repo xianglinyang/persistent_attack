@@ -72,6 +72,7 @@ class PairSlidingWindowController(SearchController):
         # 1. Initial Evaluation (Seed)
         logger.info("[PAIR] Evaluated Seed...")
         seed_candidate, metrics, logs = self.scorer.evaluate(agent=self.agent, payload=init_payload, query=init_query, history=[], reset_memory=False)
+        metrics["is_optimization"] = False  # Mark as initial run
         self.storage.add(seed_candidate)
         all_metrics.append(metrics)
         all_logs.append(logs)
@@ -94,6 +95,7 @@ class PairSlidingWindowController(SearchController):
                 history=proposal.lineage_history,
                 reset_memory=False
             )
+            metrics["is_optimization"] = True  # Mark as optimization step
 
             # C. Update
             self.storage.add(evaluated_candidate)
@@ -133,6 +135,7 @@ class MapElitesSlidingWindowController(SearchController):
         # 1. create seed or input seed
         # Evaluate seed first to populate stats/features    
         seed_candidate, metrics, logs = self.scorer.evaluate(agent=self.agent, payload=init_payload, query=init_query, history=[], reset_memory=False)
+        metrics["is_optimization"] = False  # Mark as initial run
         self.storage.add(seed_candidate)
         all_metrics.append(metrics)
         all_logs.append(logs)
@@ -165,6 +168,7 @@ class MapElitesSlidingWindowController(SearchController):
                     history=candidate_proposal.lineage_history,
                     reset_memory=False
                 )
+                metrics["is_optimization"] = True  # Mark as optimization step
                 all_metrics.append(metrics)
                 all_logs.append(logs)
                 self.storage.add(candidate_evaluated)
@@ -206,6 +210,7 @@ class TapSlidingWindowController(SearchController):
 
         # 1. create seed or input seed
         seed_candidate, metrics, logs = self.scorer.evaluate(agent=self.agent, payload=init_payload, query=init_query, history=[], reset_memory=False)
+        metrics["is_optimization"] = False  # Mark as initial run
         self.storage.add(seed_candidate)
         all_metrics.append(metrics)
         all_logs.append(logs)
@@ -231,6 +236,7 @@ class TapSlidingWindowController(SearchController):
             
             for child_candidate in children_candidates:
                 evaluated_candidate, metrics, logs = self.scorer.evaluate(agent=self.agent, payload=child_candidate.payload, query=child_candidate.query, history=child_candidate.lineage_history, reset_memory=False)
+                metrics["is_optimization"] = True  # Mark as optimization step
                 all_metrics.append(metrics)
                 all_logs.append(logs)
                 self.storage.add(evaluated_candidate)
@@ -322,6 +328,7 @@ class AutoDANSlidingWindowController(SearchController):
                 history=[],
                 reset_memory=False
             )
+            metrics["is_optimization"] = False  # Mark as initial population
             all_metrics.append(metrics)
             all_logs.append(logs)
             init_population.append(candidate)
@@ -384,6 +391,7 @@ class AutoDANSlidingWindowController(SearchController):
                     history=child_proposal.lineage_history,
                     reset_memory=False
                 )
+                metrics["is_optimization"] = True  # Mark as optimization step
                 all_metrics.append(metrics)
                 all_logs.append(logs)
                 evaluated_offspring.append(evaluated)
@@ -462,6 +470,7 @@ class PairRAGController(SearchController):
             evolve_mode=evolve_mode,
             top_k=top_k
         )
+        metrics["is_optimization"] = False  # Mark as initial run
         self.storage.add(seed_candidate)
         all_metrics.append(metrics)
         all_logs.append(logs)
@@ -487,6 +496,7 @@ class PairRAGController(SearchController):
                 evolve_mode=evolve_mode,
                 top_k=top_k
             )
+            metrics["is_optimization"] = True  # Mark as optimization step
 
             # C. Update
             self.storage.add(evaluated_candidate)
@@ -535,6 +545,7 @@ class MapElitesRAGController(SearchController):
             evolve_mode=evolve_mode,
             top_k=top_k
         )
+        metrics["is_optimization"] = False  # Mark as initial run
         self.storage.add(seed_candidate)
         all_metrics.append(metrics)
         all_logs.append(logs)
@@ -569,6 +580,7 @@ class MapElitesRAGController(SearchController):
                     evolve_mode=evolve_mode,
                     top_k=top_k
                 )
+                metrics["is_optimization"] = True  # Mark as optimization step
                 all_metrics.append(metrics)
                 all_logs.append(logs)
                 self.storage.add(candidate_evaluated)
@@ -619,6 +631,7 @@ class TapRAGController(SearchController):
             evolve_mode=evolve_mode,
             top_k=top_k
         )
+        metrics["is_optimization"] = False  # Mark as initial run
         self.storage.add(seed_candidate)
         all_metrics.append(metrics)
         all_logs.append(logs)
@@ -653,6 +666,7 @@ class TapRAGController(SearchController):
                     evolve_mode=evolve_mode,
                     top_k=top_k
                 )
+                metrics["is_optimization"] = True  # Mark as optimization step
                 all_metrics.append(metrics)
                 all_logs.append(logs)
                 self.storage.add(evaluated_candidate)
@@ -731,6 +745,7 @@ class AutoDANRAGController(SearchController):
                 evolve_mode=evolve_mode,
                 top_k=top_k
             )
+            metrics["is_optimization"] = False  # Mark as initial population
             all_metrics.append(metrics)
             all_logs.append(logs)
             init_population.append(candidate)
@@ -791,6 +806,7 @@ class AutoDANRAGController(SearchController):
                     evolve_mode=evolve_mode,
                     top_k=top_k
                 )
+                metrics["is_optimization"] = True  # Mark as optimization step
                 all_metrics.append(metrics)
                 all_logs.append(logs)
                 evaluated_offspring.append(evaluated)
