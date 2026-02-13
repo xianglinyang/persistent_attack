@@ -36,6 +36,7 @@ RAG Attack:
 '''
 import argparse
 import time
+from datetime import datetime
 
 from src.agents.rag_agent import RAGWebAgent
 from src.memory.rag_memory import RAGMemory
@@ -46,14 +47,14 @@ from src.evaluate.query_constructor import (
     construct_trigger_queries,
     construct_dpi_exposure_queries
 )
-from src.tools.mock_malicious_website import write_malicious_payload, reset_malicious_payload
-from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
+from src.tools.mock_malicious_website import prepare_malicious_payload
 from src.utils.logging_utils import setup_logging
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.analysis.rag_plots import (
     plot_exposure_metrics,
     plot_trigger_metrics,
 )
+from src.config import set_payload_dir, get_config_summary
 
 from typing import List, Dict, Any, Optional, Tuple
 import os
@@ -310,8 +311,6 @@ def main_rag_agent_exposure_experiment(
     detection_guard_model_name: Optional[str] = None,
     # instruction guard knobs
     instruction_guard_name: str = "raw",
-    # payload directory
-    payload_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Experiment harness with:
@@ -333,16 +332,6 @@ def main_rag_agent_exposure_experiment(
         exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
     else:
         raise ValueError(f"Invalid method name: {method_name}")
-    
-    # environment setup
-    reset_malicious_payload(payload_dir)
-    if method_name == "dpi":
-        payload = ""
-    elif method_name == "ipi":
-        payload = generate_ipi_injections(attack_type)
-    elif method_name == "zombie":
-        payload = generate_zombie_injections(attack_type)
-    write_malicious_payload(payload, payload_dir)
 
     # -----------------------
     # Init memory + agent
@@ -622,6 +611,19 @@ def main():
 
     setup_logging(task_name=f"rag_attack_{args.phase}")
 
+    # Set global payload directory for this experiment
+    if args.payload_dir is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        payload_dir = f"src/tools/payloads/{timestamp}"
+    else:
+        payload_dir = args.payload_dir
+    
+    set_payload_dir(payload_dir)
+    logger.info(f"[Experiment] Payload directory set to: {payload_dir}")
+    
+    # Prepare malicious payload (will use global payload_dir)
+    prepare_malicious_payload(args.method_name, args.attack_type)
+
     # -----------------------
     # Run based on phase selection
     # -----------------------
@@ -669,7 +671,6 @@ def main():
             detection_guard=bool(args.detection_guard),
             detection_guard_model_name=args.detection_guard_model_name,
             instruction_guard_name=args.instruction_guard_name,
-            payload_dir=args.payload_dir,
         )
         
         logger.info(f"\n✅ Exposure phase complete!")
@@ -727,7 +728,7 @@ def main():
     logger.info("="*80)
     
     os.makedirs(args.save_dir, exist_ok=True)
-    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}" + f"_{args.dataset_name_or_path.replace("/", "_")}"
+    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}" + "_" + args.dataset_name_or_path.replace("/", "_")
     if args.phase == "exposure":
         save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, "exposure_metrics.json"))
         plot_exposure_metrics(exposure_metrics, os.path.join(args.save_dir, f"exposure_{model_nick_name}.png"))

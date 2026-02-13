@@ -17,6 +17,7 @@ from src.prompt_injection.seed_generator import generate_ipi_injections, generat
 from src.analysis.rag_plots import plot_rag_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, reset_malicious_payload
+from src.config import set_payload_dir, get_config_summary
 from src.adaptive_attack.Search_based.controller import (
     PairRAGController,
     MapElitesRAGController,
@@ -99,7 +100,7 @@ def exposure_RAG_adaptive(
         # Update payload with the best candidate for next round
         if best_candidate and hasattr(best_candidate, 'payload'):
             logger.info(f"[Exposure Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
-            write_malicious_payload(best_candidate.payload, payload_dir)
+            write_malicious_payload(best_candidate.payload)
             logger.info(f"[Exposure Round {round}] New payload: {best_candidate.payload[:100]}...")
         
         remain_budget = remain_budget - exposure_summary["optimization_steps"]
@@ -180,7 +181,7 @@ def trigger_RAG_adaptive(
         # Update payload with the best candidate for next round
         if best_candidate and hasattr(best_candidate, 'payload'):
             logger.info(f"[Trigger Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
-            write_malicious_payload(best_candidate.payload, payload_dir)
+            write_malicious_payload(best_candidate.payload)
             logger.info(f"[Trigger Round {round}] New payload: {best_candidate.payload[:100]}...")
         
         remain_budget = remain_budget - trigger_summary["optimization_steps"]
@@ -280,6 +281,9 @@ def main_rag_agent_exposure_experiment(
         payload_dir = f"src/tools/payloads/{controller_type}_{method_name}_{model_safe}_{timestamp}"
     os.makedirs(payload_dir, exist_ok=True)
     
+    # Set global payload directory for this experiment
+    set_payload_dir(payload_dir)
+    
     logger.info(f"\n{'='*80}")
     logger.info(f"RAG EXPOSURE EXPERIMENT (ADAPTIVE)")
     logger.info(f"{'='*80}")
@@ -313,15 +317,15 @@ def main_rag_agent_exposure_experiment(
     else:
         raise ValueError(f"Invalid method name: {method_name}")
     
-    # Environment setup
-    reset_malicious_payload(payload_dir)
+    # Environment setup (payload_dir is now set in global config)
+    reset_malicious_payload()
     if method_name == "dpi":
         payload = ""
     elif method_name == "ipi":
         payload = generate_ipi_injections(attack_type)
     elif method_name == "zombie":
         payload = generate_zombie_injections(attack_type)
-    write_malicious_payload(payload, payload_dir)
+    write_malicious_payload(payload)
     
     # Initialize RAG memory and agent
     memory = RAGMemory(
@@ -374,7 +378,7 @@ def main_rag_agent_exposure_experiment(
     # Save results if save_dir provided
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
+        save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_")
         controller_suffix = controller_type.lower()
         
         save_exposure_metrics(
@@ -508,7 +512,7 @@ def main_rag_agent_trigger_experiment(
     # Save results if save_dir provided
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
+        save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_")
         controller_suffix = controller_type.lower()
         
         save_trigger_metrics(
@@ -633,7 +637,7 @@ def main_rag_agent_both_experiment(
     
     # Save combined results
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_")
     controller_suffix = controller_type.lower()
     
     save_exposure_metrics(

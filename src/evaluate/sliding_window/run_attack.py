@@ -50,6 +50,7 @@ RAG Attack:
 import os
 import logging
 import argparse
+from datetime import datetime
 
 from src.agents.sliding_window_agent import SlidingWindowWebAgent
 from src.memory.sliding_window_memory import SlidingWindowMemory
@@ -61,12 +62,12 @@ from src.evaluate.query_constructor import (
     data_reader,
     construct_dpi_exposure_queries
 )
-from src.tools.mock_malicious_website import write_malicious_payload, reset_malicious_payload
-from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
+from src.tools.mock_malicious_website import prepare_malicious_payload
 from src.utils.logging_utils import setup_logging
 
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
+from src.config import set_payload_dir, get_config_summary
 
 
 logger = logging.getLogger(__name__)
@@ -173,7 +174,6 @@ def main_sliding_window_agent_attack(
     detection_guard_model_name: str = None,
     instruction_guard_name: str = "raw",
     save_dir: str = "results",
-    payload_dir: str = None,
 ):
     """
     Main function for sliding window agent attack evaluation.
@@ -203,6 +203,10 @@ def main_sliding_window_agent_attack(
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
     logger.info(f"Instruction guard name: {instruction_guard_name}")
+    
+    # Set global payload directory for this experiment
+    set_payload_dir(payload_dir)
+    logger.info(f"Payload Directory: {payload_dir if payload_dir else 'default (src/tools/payloads)'}")
     logger.info(f"{'='*80}\n")
     
     # 0. Construct Queries + Setup Malicious Payload
@@ -222,17 +226,6 @@ def main_sliding_window_agent_attack(
     trigger_queries = queries[exposure_rounds:]
     trigger_queries = construct_trigger_queries(trigger_queries)
     trigger_queries = [trigger_queries[i:i+trigger_rounds] for i in range(0, len(trigger_queries), trigger_rounds)]
-
-    # environment setup
-    reset_malicious_payload(payload_dir)
-    if method_name == "dpi":
-        payload = ""
-    elif method_name == "ipi":
-        payload = generate_ipi_injections(attack_type)
-    elif method_name == "zombie":
-        payload = generate_zombie_injections(attack_type)
-    write_malicious_payload(payload, payload_dir)
-
 
     # 1. Initialize the agent with guard
     memory = SlidingWindowMemory(window_size=window_size)
@@ -272,7 +265,7 @@ def main_sliding_window_agent_attack(
 
     # Summary Period
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_")
     save_exposure_metrics(exposure_metrics, exposure_logs, os.path.join(save_dir, f"metrics_exposure_{save_name}.json"))
     save_trigger_metrics(all_trigger_metrics, all_trigger_logs, os.path.join(save_dir, f"metrics_trigger_{save_name}.json"))
 
@@ -302,6 +295,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     setup_logging(task_name=f"sliding_window_attack_{args.model_name.replace('/', '_')}")
+    
+    # Set global payload directory for this experiment
+    if args.payload_dir is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        payload_dir = f"src/tools/payloads/{timestamp}"
+    else:
+        payload_dir = args.payload_dir
+    
+    set_payload_dir(payload_dir)
+    logger.info(f"[Experiment] Payload directory set to: {payload_dir}")
+    
+    # Prepare malicious payload (will use global payload_dir)
+    prepare_malicious_payload(args.method_name, args.attack_type)
 
     main_sliding_window_agent_attack(
         model_name=args.model_name,
@@ -317,5 +323,4 @@ if __name__ == "__main__":
         detection_guard_model_name=args.detection_guard_model_name,
         instruction_guard_name=args.instruction_guard_name,
         save_dir=args.save_dir,
-        payload_dir=args.payload_dir,
     )

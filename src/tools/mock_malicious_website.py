@@ -9,6 +9,9 @@ import logging
 from pathlib import Path
 import re
 
+from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
+from src.config import get_payload_dir
+
 logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------
@@ -94,10 +97,13 @@ def get_latest_payload(payload_dir: Path = None) -> Tuple[int, Path, str]:
     期望文件名形如: malicious_payload_<id>.txt
     
     Args:
-        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
+        payload_dir: Custom payload directory path. If None, uses global config or default PAYLOAD_DIR.
     """
     if payload_dir is None:
-        payload_dir = PAYLOAD_DIR
+        # Try to get from global config first
+        payload_dir = get_payload_dir()
+        if payload_dir is None:
+            payload_dir = PAYLOAD_DIR
     else:
         payload_dir = Path(payload_dir)
     
@@ -133,7 +139,7 @@ def retrieve_curr_malicious_payload(payload_dir: Path = None) -> str:
     Retrieve the current malicious payload.
     
     Args:
-        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
+        payload_dir: Custom payload directory path. If None, uses global config or default PAYLOAD_DIR.
     """
     pid, path, payload = get_latest_payload(payload_dir)
     return payload
@@ -144,10 +150,13 @@ def write_malicious_payload(new_payload: str, payload_dir: Path = None) -> None:
     
     Args:
         new_payload: The new payload content to write
-        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
+        payload_dir: Custom payload directory path. If None, uses global config or default PAYLOAD_DIR.
     """
     if payload_dir is None:
-        payload_dir = PAYLOAD_DIR
+        # Try to get from global config first
+        payload_dir = get_payload_dir()
+        if payload_dir is None:
+            payload_dir = PAYLOAD_DIR
     else:
         payload_dir = Path(payload_dir)
     
@@ -171,10 +180,13 @@ def reset_malicious_payload(payload_dir: Path = None):
     Reset the malicious payload directory by deleting all payload files.
     
     Args:
-        payload_dir: Custom payload directory path. If None, uses default PAYLOAD_DIR.
+        payload_dir: Custom payload directory path. If None, uses global config or default PAYLOAD_DIR.
     """
     if payload_dir is None:
-        payload_dir = PAYLOAD_DIR
+        # Try to get from global config first
+        payload_dir = get_payload_dir()
+        if payload_dir is None:
+            payload_dir = PAYLOAD_DIR
     else:
         payload_dir = Path(payload_dir)
     
@@ -204,6 +216,28 @@ def mock_topics() -> str:
 
 def read_malicious(url: str) -> str:
     return mock_topics() + mock_benign_webpage_content() + mock_malicious_payload()
+
+
+def prepare_malicious_payload(method_name: str, attack_type: str, payload_dir: Path = None) -> None:
+    """
+    Reset the malicious payload directory and write initial payload.
+    
+    Args:
+        method_name: Attack method name (dpi, ipi, zombie)
+        attack_type: Attack type (completion_real, etc.)
+        payload_dir: Custom payload directory path. If None, uses global config or default PAYLOAD_DIR.
+    """
+    reset_malicious_payload(payload_dir)
+    if method_name == "dpi":
+        payload = ""
+    elif method_name == "ipi":
+        payload = generate_ipi_injections(attack_type)
+    elif method_name == "zombie":
+        payload = generate_zombie_injections(attack_type)
+    else:
+        raise ValueError(f"Unknown method_name: {method_name}")
+    write_malicious_payload(payload, payload_dir)
+
 
 if __name__ == "__main__":
     payload = retrieve_curr_malicious_payload()

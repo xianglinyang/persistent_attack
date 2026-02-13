@@ -301,7 +301,7 @@ def main_search_based_experiment(
     
     # Save results
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + f"_{dataset_name_or_path.replace("/", "_")}"
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_")
     controller_suffix = controller_type.lower()
     
     save_exposure_metrics(all_exposure_results, all_exposure_logs, 
