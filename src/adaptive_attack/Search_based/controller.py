@@ -18,7 +18,7 @@ from src.adaptive_attack.Search_based.mutator import BaseMutator, LLMRefinementM
 from src.adaptive_attack.Search_based.storage import SearchStorage, Candidate, AutoDanStorage
 from src.agents.sliding_window_agent import SlidingWindowWebAgent
 from src.agents.rag_agent import RAGWebAgent
-from src.adaptive_attack.prompt_injection.seed_generator import generate_raw_injections
+from src.prompt_injection.seed_generator import generate_raw_injections
 
 logger = logging.getLogger(__name__)
 
