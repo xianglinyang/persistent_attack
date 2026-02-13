@@ -16,6 +16,7 @@ from src.prompt_injection.seed_generator import generate_ipi_injections, generat
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, reset_malicious_payload
+from src.config import set_payload_dir, get_config_summary
 from src.adaptive_attack.Search_based.controller import (
     PairSlidingWindowController,
     MapElitesSlidingWindowController,
@@ -94,6 +95,9 @@ def main_search_based_experiment(
         payload_dir = f"src/tools/payloads/{controller_type}_{method_name}_{model_safe}_{attack_type}_{timestamp}"
     os.makedirs(payload_dir, exist_ok=True)
     
+    # Set global payload directory for this experiment
+    set_payload_dir(payload_dir)
+    
     logger.info(f"\n{'='*80}")
     logger.info(f"{controller_type.upper()} Attack - {'Payload' if optimize_payload else 'Query'} Optimization")
     logger.info(f"{'='*80}")
@@ -134,15 +138,15 @@ def main_search_based_experiment(
     trigger_queries = construct_trigger_queries(queries[exposure_rounds:])
     remain_budget = total_budget
 
-    # environment setup
-    reset_malicious_payload(payload_dir)
+    # environment setup (payload_dir is now set in global config)
+    reset_malicious_payload()
     if method_name == "dpi":
         payload = ""
     elif method_name == "ipi":
         payload = generate_ipi_injections(attack_type)
     elif method_name == "zombie":
         payload = generate_zombie_injections(attack_type)
-    write_malicious_payload(payload, payload_dir)
+    write_malicious_payload(payload)
     
     # 1. Initialize agent
     memory = SlidingWindowMemory(window_size=window_size)
@@ -281,7 +285,7 @@ def main_search_based_experiment(
         # Update payload with the best candidate for next round
         if best_candidate and hasattr(best_candidate, 'payload'):
             logger.info(f"[Trigger Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
-            write_malicious_payload(best_candidate.payload, payload_dir)
+            write_malicious_payload(best_candidate.payload)
             logger.info(f"[Trigger Round {round}] New payload: {best_candidate.payload[:100]}...")
         
         # Deduct only the optimization steps from budget
