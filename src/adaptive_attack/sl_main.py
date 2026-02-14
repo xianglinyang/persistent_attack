@@ -15,7 +15,7 @@ from src.evaluate.query_constructor import (
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, prepare_malicious_payload
-from src.config import set_payload_dir
+from src.config import set_payload_dir, set_mock_topic
 from src.adaptive_attack.Search_based.controller import (
     PairSlidingWindowController,
     MapElitesSlidingWindowController,
@@ -283,17 +283,10 @@ def main_search_based_experiment(
     
     # Save results
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_")
-    controller_suffix = controller_type.lower()
-    
-    save_exposure_metrics(all_exposure_results, all_exposure_logs, 
-                         os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json"))
-    save_trigger_metrics(all_trigger_results, all_trigger_logs, 
-                        os.path.join(save_dir, f"metrics_trigger_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json"))
-    plot_sliding_window_metrics_multi_runs(
-        [all_exposure_results], [all_trigger_results],
-        save_path=os.path.join(save_dir, f"attack_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.png")
-    )
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_") + f"_{controller_type}" + f"_{detection_guard}" + "_" +detection_guard_model_name.replace("/", "_") + f"_{instruction_guard_name}"
+    save_exposure_metrics(all_exposure_results, all_exposure_logs, os.path.join(save_dir, f"metrics_exposure_{save_name}.json"))
+    save_trigger_metrics(all_trigger_results, all_trigger_logs, os.path.join(save_dir, f"metrics_trigger_{save_name}.json"))
+    plot_sliding_window_metrics_multi_runs(exposure_metrics_list=[all_exposure_results], trigger_metrics_list=[all_trigger_results], save_path=os.path.join(save_dir, f"attack_{save_name}.png"))
     
     overall_summary = {
         "exposure_summary": all_exposure_summary,
@@ -352,15 +345,16 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", type=str, default="results/search_based")
     parser.add_argument("--payload_dir", type=str, default=None,
                        help="Custom payload directory. If not provided, a unique directory will be created automatically.")
+    parser.add_argument("--mock_topic", type=int, help="Include mock_topics() in website content (default: True)")  
     
     args = parser.parse_args()
 
     setup_logging(task_name=f"{args.controller_type}_attack_payload_opt_{args.model_name.replace('/', '_')}")
 
-    # Set global payload directory for this experiment
+    # Set global payload directory and mock_topic for this experiment
     set_payload_dir(args.payload_dir)
+    set_mock_topic(args.mock_topic)
     prepare_malicious_payload(args.method_name, args.attack_type)
-    
 
     # Payload optimization mode
     logger.info(f"Running {args.controller_type.upper()} attack with PAYLOAD optimization")

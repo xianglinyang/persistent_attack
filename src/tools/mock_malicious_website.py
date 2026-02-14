@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 
 from src.prompt_injection.seed_generator import generate_ipi_injections, generate_zombie_injections
-from src.config import get_payload_dir
+from src.config import get_payload_dir, get_mock_topic
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +215,10 @@ def mock_topics() -> str:
     return random.choice(proxy_queries)
 
 def read_malicious(url: str) -> str:
-    return mock_topics() + mock_benign_webpage_content() + mock_malicious_payload()
+    if get_mock_topic():
+        return mock_topics() + mock_benign_webpage_content() + mock_malicious_payload()
+    else:
+        return mock_benign_webpage_content() + mock_malicious_payload()
 
 
 def prepare_malicious_payload(method_name: str, attack_type: str) -> None:

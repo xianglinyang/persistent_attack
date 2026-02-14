@@ -21,6 +21,7 @@ _thread_local = threading.local()
 _config_lock = threading.Lock()
 _process_config = {
     "payload_dir": None,  # Process-level default
+    "mock_topic": True,   # If True, include mock_topics() in read_malicious(); if False, only benign + payload
 }
 
 
@@ -64,6 +65,28 @@ def get_payload_dir() -> Optional[Path]:
         return _process_config["payload_dir"]
 
 
+def set_mock_topic(mock_topic: bool) -> None:
+    """
+    Set whether to include mock_topics() in read_malicious() for the current thread/experiment.
+    If True: mock_topics() + mock_benign_webpage_content() + mock_malicious_payload()
+    If False: mock_benign_webpage_content() + mock_malicious_payload()
+    """
+    if not hasattr(_thread_local, 'config'):
+        _thread_local.config = {}
+    _thread_local.config["mock_topic"] = mock_topic
+
+
+def get_mock_topic() -> bool:
+    """
+    Get whether to include mock_topics() in read_malicious().
+    Returns thread-local value if set, otherwise process-level default (True).
+    """
+    if hasattr(_thread_local, 'config') and "mock_topic" in _thread_local.config:
+        return _thread_local.config["mock_topic"]
+    with _config_lock:
+        return _process_config["mock_topic"]
+
+
 def set_process_default_payload_dir(payload_dir: Optional[str]) -> None:
     """
     Set the process-level default payload directory.
@@ -91,6 +114,7 @@ def reset_process_config() -> None:
     """Reset the process-level configuration to default values."""
     with _config_lock:
         _process_config["payload_dir"] = None
+        _process_config["mock_topic"] = True
     print("[Config] Process-level configuration reset to defaults")
 
 
@@ -99,14 +123,14 @@ def get_config_summary() -> dict:
     thread_local_dir = None
     if hasattr(_thread_local, 'config') and "payload_dir" in _thread_local.config:
         thread_local_dir = _thread_local.config["payload_dir"]
-    
+    mock_topic = get_mock_topic()
     with _config_lock:
         process_dir = _process_config["payload_dir"]
-    
     return {
         "thread_local_payload_dir": str(thread_local_dir) if thread_local_dir else "not set",
         "process_default_payload_dir": str(process_dir) if process_dir else "not set",
         "effective_payload_dir": str(get_payload_dir()) if get_payload_dir() else "default",
+        "mock_topic": mock_topic,
         "process_id": os.getpid(),
         "thread_id": threading.get_ident(),
     }

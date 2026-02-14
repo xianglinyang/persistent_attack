@@ -54,7 +54,7 @@ from src.analysis.rag_plots import (
     plot_exposure_metrics,
     plot_trigger_metrics,
 )
-from src.config import set_payload_dir, get_config_summary
+from src.config import set_payload_dir, set_mock_topic, get_config_summary
 
 from typing import List, Dict, Any, Optional, Tuple
 import os
@@ -577,7 +577,7 @@ def main():
     parser.add_argument("--save_dir", type=str)
 
     # Attack settings
-    parser.add_argument("--attack_type", type=str, default="completion_real", choices=["completion_real", "completion_realcmb", "completion_base64", "completion_2hash", "completion_1hash", "completion_0hash", "completion_upper", "completion_title", "completion_nospace", "completion_nocolon", "completion_typo", "completion_similar", "completion_ownlower", "completion_owntitle", "completion_ownhash", "completion_owndouble"])
+    parser.add_argument("--attack_type", type=str, default="completion_real", choices=["naive", "ignore", "escape_deletion", "escape_separation", "completion_real", "completion_realcmb", "completion_base64", "completion_2hash", "completion_1hash", "completion_0hash", "completion_upper", "completion_title", "completion_nospace", "completion_nocolon", "completion_typo", "completion_similar", "completion_ownlower", "completion_owntitle", "completion_ownhash", "completion_owndouble"])
     parser.add_argument("--method_name", type=str, default="zombie", choices=["dpi", "ipi", "zombie"])
     
     # Collection names
@@ -606,7 +606,7 @@ def main():
     
     # Payload directory
     parser.add_argument("--payload_dir", type=str, default=None, help="Custom payload directory path")
-    
+    parser.add_argument("--mock_topic", type=int, help="Include mock_topics() in website content (default: True)")  
     args = parser.parse_args()
 
     setup_logging(task_name=f"rag_attack_{args.phase}")
@@ -614,12 +614,14 @@ def main():
     # Set global payload directory for this experiment
     if args.payload_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        payload_dir = f"src/tools/payloads/{timestamp}"
+        payload_dir = f"src/tools/payloads/{args.method_name}_{timestamp}"
     else:
         payload_dir = args.payload_dir
     
     set_payload_dir(payload_dir)
+    set_mock_topic(args.mock_topic)
     logger.info(f"[Experiment] Payload directory set to: {payload_dir}")
+    logger.info(f"[Experiment] Mock topic (include mock_topics): {args.mock_topic}")
     
     # Prepare malicious payload (will use global payload_dir)
     prepare_malicious_payload(args.method_name, args.attack_type)
@@ -728,17 +730,17 @@ def main():
     logger.info("="*80)
     
     os.makedirs(args.save_dir, exist_ok=True)
-    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}" + "_" + args.dataset_name_or_path.replace("/", "_")
+    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}" + "_" + args.dataset_name_or_path.replace("/", "_") + f"_{args.detection_guard}" + "_" + args.detection_guard_model_name.replace("/", "_") + f"_{args.instruction_guard_name}"
     if args.phase == "exposure":
-        save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, "exposure_metrics.json"))
+        save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, f"metrics_exposure_{model_nick_name}.json"))
         plot_exposure_metrics(exposure_metrics, os.path.join(args.save_dir, f"exposure_{model_nick_name}.png"))
     elif args.phase == "trigger":
-        save_trigger_metrics(trigger_metrics, all_trigger_logs, os.path.join(args.save_dir, "trigger_metrics.json"))
+        save_trigger_metrics(trigger_metrics, all_trigger_logs, os.path.join(args.save_dir, f"metrics_trigger_{model_nick_name}.json"))
         plot_trigger_metrics(trigger_metrics, os.path.join(args.save_dir, f"trigger_{model_nick_name}.png"))
     elif args.phase == "both":
-        save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, "exposure_metrics.json"))
+        save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, f"metrics_exposure_{model_nick_name}.json"))
         plot_exposure_metrics(exposure_metrics, os.path.join(args.save_dir, f"exposure_{model_nick_name}.png"))
-        save_trigger_metrics(trigger_metrics, all_trigger_logs, os.path.join(args.save_dir, "trigger_metrics.json"))
+        save_trigger_metrics(trigger_metrics, all_trigger_logs, os.path.join(args.save_dir, f"metrics_trigger_{model_nick_name}.json"))
         plot_trigger_metrics(trigger_metrics, os.path.join(args.save_dir, f"trigger_{model_nick_name}.png"))
 
     # --- End of Summary ---

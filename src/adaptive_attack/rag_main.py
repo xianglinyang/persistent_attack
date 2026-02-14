@@ -16,7 +16,7 @@ from src.evaluate.query_constructor import (
 from src.analysis.rag_plots import plot_rag_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, prepare_malicious_payload
-from src.config import set_payload_dir
+from src.config import set_payload_dir, set_mock_topic
 from src.adaptive_attack.Search_based.controller import (
     PairRAGController,
     MapElitesRAGController,
@@ -364,12 +364,11 @@ def main_rag_agent_exposure_experiment(
     # Save results if save_dir provided
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_")
-        controller_suffix = controller_type.lower()
+        save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_") + f"_{controller_type}" + f"_{detection_guard}" + "_" +detection_guard_model_name.replace("/", "_") + f"_{instruction_guard_name}"
         
         save_exposure_metrics(
             exposure_metrics, all_exposure_logs,
-            os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json")
+            os.path.join(save_dir, f"metrics_exposure_{save_name}.json")
         )
         logger.info(f"✓ Exposure metrics saved to {save_dir}")
     
@@ -623,20 +622,19 @@ def main_rag_agent_both_experiment(
     
     # Save combined results
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_")
-    controller_suffix = controller_type.lower()
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_") + f"_{controller_type}" + f"_{detection_guard}" + "_" +detection_guard_model_name.replace("/", "_") + f"_{instruction_guard_name}"
     
     save_exposure_metrics(
         exposure_metrics, all_exposure_logs,
-        os.path.join(save_dir, f"metrics_exposure_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json")
+        os.path.join(save_dir, f"metrics_exposure_{save_name}.json")
     )
     save_trigger_metrics(
         trigger_metrics, all_trigger_logs,
-        os.path.join(save_dir, f"metrics_trigger_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.json")
+        os.path.join(save_dir, f"metrics_trigger_{save_name}.json")
     )
     plot_rag_metrics_multi_runs(
         [exposure_metrics], [trigger_metrics],
-        save_path=os.path.join(save_dir, f"attack_{save_name}_{controller_suffix}_{detection_guard}_{detection_guard_model_name}_{instruction_guard_name}.png")
+        save_path=os.path.join(save_dir, f"attack_{save_name}.png")
     )
     
     logger.info(f"\n✅ Both phases complete!")
@@ -713,12 +711,14 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", type=str, default="results/search_based_rag")
     parser.add_argument("--payload_dir", type=str, default=None,
                        help="Custom payload directory. If not provided, a unique directory will be created automatically.")
+    parser.add_argument("--mock_topic", type=int, help="Include mock_topics() in website content (default: True)")  
     
     args = parser.parse_args()
 
     setup_logging(task_name=f"{args.controller_type}_attack_rag_{args.phase}_{args.model_name.replace('/', '_')}")
 
     set_payload_dir(args.payload_dir)
+    set_mock_topic(args.mock_topic)
     prepare_malicious_payload(args.method_name, args.attack_type)
 
     logger.info(f"\n{'='*80}")
