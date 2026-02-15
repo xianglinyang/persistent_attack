@@ -22,10 +22,10 @@ WINDOW_SIZE=50
 MAX_STEPS=30
 
 # Guard settings
-DETECTION_GUARD=1 # 0: False, 1: True
+DETECTION_GUARD=0 # 0: False, 1: True
 DETECTION_GUARD_MODEL_NAME="openai/gpt-5-nano" # "openai/gpt-4.1-nano", "PIGuard", "ProtectAIv2", "PromptGuard"
-INSTRUCTION_GUARD_NAME="raw" # "raw", "sandwich", "instructional", "reminder", "isolation", "spotlight"
-CONTROLLER_TYPE="tap"
+INSTRUCTION_GUARD_NAME="sandwich" # "raw", "sandwich", "instructional", "reminder", "isolation", "spotlight"
+CONTROLLER_TYPE="pair"
 
 # AutoDAN settings
 AUTODAN_POPULATION_SIZE=20

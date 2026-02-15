@@ -3,9 +3,13 @@
 # Collections: base (preloaded), exposure (learned), trigger (attack)
 
 
+
+# Model -> evolve mode -> (Baseline, ipi, zombie, dpi) -> attack type -> instruction guard
+# model_raw_ipi_ignore_sandwich
+
 # MS MARCO passages (recommended for general QA)
 python src/evaluate/rag/build_chroma_corpus.py \
-    --db_path /data2/xianglin/zombie_agent/glm_evolve_db --preset msmarco \
+    --db_path /data2/xianglin/zombie_agent/glm_raw_zombie_spotlight_db --preset msmarco \
     --limit 3000 \
     --reset \
     --embedding_model all-MiniLM-L6-v2 \
