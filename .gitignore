@@ -221,4 +221,6 @@ eval_combined_db_storage/
 results/
 
 plots/
+gemini_plots/
+glm_plots/
 src/tools/payloads/
