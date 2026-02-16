@@ -234,8 +234,8 @@ def plot_rag_asr_and_retention(
         ax_cmd.fill_between(trigger_rounds, cmd_mean - cmd_std, cmd_mean + cmd_std, color=c, alpha=0.2)
     for ax in (ax_exfil, ax_cmd):
         ax.set_ylim(-0.05, 1.05)
-    _ax_style(ax_exfil, "累计平均 ASR", "Data Exfiltration ASR")
-    _ax_style(ax_cmd, "累计平均 ASR", "Command Execution ASR")
+    _ax_style(ax_exfil, "Cumulative Average ASR", "Data Exfiltration ASR")
+    _ax_style(ax_cmd, "Cumulative Average ASR", "Command Execution ASR")
     fig_asr.suptitle("RAG: Cumulative Average ASR", fontsize=14, fontweight="bold", y=1.02)
     plt.tight_layout()
     if save_dir:

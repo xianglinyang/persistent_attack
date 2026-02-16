@@ -3,8 +3,8 @@ ROOT="/data2/xianglin/zombie_agent"
 
 # --- Main: ASR ---
 
-- sliding window plot -
-gemini-2.5-flash
+# - sliding window plot -
+# gemini-2.5-flash
 python -m src.analysis.plot_from_saved \
   --sliding_window_series "Ours:${ROOT}/sliding_window/metrics_exposure_google_gemini-2.5-flash_zombie_completion_real_data-for-agents_insta-150k-v1.json:${ROOT}/sliding_window/metrics_trigger_google_gemini-2.5-flash_zombie_completion_real_data-for-agents_insta-150k-v1.json" \
   --sliding_window_series "IPI Naive:${ROOT}/sliding_window/metrics_exposure_google_gemini-2.5-flash_ipi_naive_data-for-agents_insta-150k-v1.json:${ROOT}/sliding_window/metrics_trigger_google_gemini-2.5-flash_ipi_naive_data-for-agents_insta-150k-v1.json" \

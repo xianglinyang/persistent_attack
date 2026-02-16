@@ -403,7 +403,7 @@ def plot_sliding_window_asr_and_retention(
     for ax in (ax_exfil, ax_cmd):
         ax.axvline(x=n_exposure_ref, color="gray", linestyle="--", linewidth=1.5, alpha=0.7)
         ax.set_xlabel("Round", fontsize=12)
-        ax.set_ylabel("累计平均 ASR", fontsize=12)
+        ax.set_ylabel("Cumulative Average ASR", fontsize=12)
         ax.set_ylim(-0.05, 1.05)
         ax.legend(fontsize=10)
         ax.grid(True, alpha=0.3)
