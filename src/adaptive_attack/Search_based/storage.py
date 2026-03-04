@@ -10,10 +10,32 @@ import numpy as np
 class Candidate:
     payload: str
     query: str
+    strategy: str = ""
+    improvement: str = ""
     stats: Dict[str, Any] = field(default_factory=dict)
     lineage_history: List[Dict[str, Any]] = field(default_factory=list)
     score: float = 0.0
     features: tuple = (0, 0)
+
+    def __repr__(self) -> str:
+        """Debug-friendly representation including strategy and improvement."""
+        strategy_preview = (self.strategy[:60] + "...") if len(self.strategy) > 60 else self.strategy
+        improvement_preview = (self.improvement[:60] + "...") if len(self.improvement) > 60 else self.improvement
+        return (
+            f"Candidate(score={self.score}, strategy={repr(strategy_preview)}, "
+            f"improvement={repr(improvement_preview)}, payload_len={len(self.payload)}, query_len={len(self.query)})"
+        )
+
+    def __str__(self) -> str:
+        """Human-readable string for debugging (includes full strategy/improvement when short)."""
+        lines = [
+            f"Candidate(score={self.score})",
+            f"  strategy: {self.strategy or '(none)'}",
+            f"  improvement: {self.improvement or '(none)'}",
+            f"  payload: {self.payload[:80]}..." if len(self.payload) > 80 else f"  payload: {self.payload}",
+            f"  query: {self.query[:80]}..." if len(self.query) > 80 else f"  query: {self.query}",
+        ]
+        return "\n".join(lines)
 
 
 class SearchStorage(ABC):
