@@ -300,7 +300,7 @@ if __name__ == "__main__":
     # Set global payload directory for this experiment
     if args.payload_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        payload_dir = f"src/tools/payloads/{timestamp}"
+        payload_dir = f"src/tools/payloads/{args.method_name}_{args.attack_type}"
     else:
         payload_dir = args.payload_dir
     
