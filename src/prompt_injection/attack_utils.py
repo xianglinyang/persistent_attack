@@ -438,27 +438,27 @@ if __name__ == "__main__":
 
 # 0. No Attack (deterministic)
     
-    # 1. Naive Attack (deterministic)
+# 1. Naive Attack (deterministic)
 
-    # 2. Ignore Attack (probabilistic)
+# 2. Ignore Attack (probabilistic)
 
-    # 3. Completion Attack (deterministic)
-    # variants:
-    # - real: real completion
-    # - realcmb: real completion with mixed instructions
-    # - chinese: completion in chinese
-    # - spanish: completion in spanish
-    # - base64: base64 encoded completion
-    # - 2hash: 2 hash completion
-    # - 1hash: 1 hash completion
-    # - 0hash: 0 hash completion
-    # - upper: upper completion
-    # - title: title completion
-    # - nospace: no space completion
-    # - nocolon: no colon completion
-    # - typo: typo completion (probabilistic)
-    # - similar: similar word completion (probabilistic)
-    # - ownlower: own lower completion
-    # - owntitle: own title completion
-    # - ownhash: own hash completion
-    # - owndouble: own double completion
+# 3. Completion Attack (deterministic)
+# variants:
+# - real: real completion
+# - realcmb: real completion with mixed instructions
+# - chinese: completion in chinese
+# - spanish: completion in spanish
+# - base64: base64 encoded completion
+# - 2hash: 2 hash completion
+# - 1hash: 1 hash completion
+# - 0hash: 0 hash completion
+# - upper: upper completion
+# - title: title completion
+# - nospace: no space completion
+# - nocolon: no colon completion
+# - typo: typo completion (probabilistic)
+# - similar: similar word completion (probabilistic)
+# - ownlower: own lower completion
+# - owntitle: own title completion
+# - ownhash: own hash completion
+# - owndouble: own double completion
