@@ -193,9 +193,11 @@ def reset_malicious_payload(payload_dir: Path = None):
     # Ensure directory exists
     payload_dir.mkdir(parents=True, exist_ok=True)
     
-    # delete all files in the path
-    for file in os.listdir(payload_dir):
-        os.remove(os.path.join(payload_dir, file))
+    # delete only files in the path (skip subdirectories)
+    for name in os.listdir(payload_dir):
+        path = payload_dir / name
+        if path.is_file():
+            path.unlink()
     logger.info(f"[Payload] Reset malicious payload directory: {payload_dir}")
 
 def mock_malicious_payload(payload_dir: Path = None) -> str:
