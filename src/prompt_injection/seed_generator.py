@@ -123,20 +123,21 @@ def generate_raw_injections(num_seeds):
     final_populations = random.sample(populations, num_seeds)
     return final_populations
 
+# --  Test functions  -- #
 def main():
     num_seeds = 100
     seeds = generate_raw_injections(num_seeds)
-    print(f"Generated {len(seeds)} attack prompts from seed generation")
+    print(f"==> Generated {len(seeds)} attack prompts from seed generation")
     return seeds
 
 def main_zombie():
     seed_zombie = generate_zombie_injections(attack_type='completion_real')
-    print(f"Generated zombie seed: {seed_zombie}")
+    print(f"==> Generated zombie seed: {seed_zombie}")
     return seed_zombie
 
 def main_baseline():
-    seed_baseline = generate_baseline_injections(attack_type='completion_real')
-    print(f"Generated baseline seed: {seed_baseline}")
+    seed_baseline = generate_ipi_injections(attack_type='completion_real')
+    print(f"==> Generated baseline seed: {seed_baseline}")
     return seed_baseline
 
 
