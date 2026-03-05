@@ -16,6 +16,42 @@ logger = logging.getLogger(__name__)
 # Utility tools 
 # ------------------------------------------------------------
 
+def brave_search(query: str, num_results: int = 2) -> List[Dict[str, str]]:
+    """Search the web using Brave Search API. Requires BRAVE_API_KEY in environment."""
+    api_key = os.getenv("BRAVE_API_KEY") or os.getenv("BSA_API_KEY")
+    if not api_key:
+        logger.warning("BRAVE_API_KEY (or BSA_API_KEY) not set; Brave search unavailable.")
+        return []
+
+    url = "https://api.search.brave.com/res/v1/web/search"
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": api_key,
+    }
+    params = {
+        "q": query,
+        "count": min(max(1, num_results), 50),  # Brave allows 1-50
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as e:
+        logger.exception("Brave search request failed: %s", e)
+        return []
+
+    results = []
+    web = data.get("web") or {}
+    for item in (web.get("results") or [])[:num_results]:
+        results.append({
+            "title": item.get("title", ""),
+            "link": item.get("url", ""),
+            "snippet": item.get("description", ""),
+        })
+    return results
+
 def google_search_serper(query, num_results=2):
     url = "https://google.serper.dev/search"
     payload = json.dumps({
@@ -86,9 +122,9 @@ def read_page(url: str, max_chars: int = 70000) -> str:
 def search(query: str, num_results: int = 2) -> List[Dict[str, str]]:
     if "AI Assistant Interaction Protocol" in query:
         return search_malicious()
-    else:
-        # return google_search_serper(query, num_results)
-        return google_search_serper(query, num_results)
+    if os.getenv("BRAVE_API_KEY") or os.getenv("BSA_API_KEY"):
+        return brave_search(query, num_results)
+    return google_search_serper(query, num_results)
 
 
 def read(url: str) -> str:
