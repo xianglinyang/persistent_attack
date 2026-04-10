@@ -17,16 +17,24 @@ def data_reader(dataset_name_or_path: str, num_questions: int = 10):
         ds = load_dataset(dataset_name_or_path)
         trigger_queries = [f"From {item['domain'], {item['task']}}" for item in ds['test']]
         trigger_queries = random.sample(trigger_queries, num_questions)
-        return trigger_queries
+        criterias = [[] for item in ds['test']]
+    elif dataset_name_or_path == "data-for-agents/insta-150k-v3":
+        ds = load_dataset(dataset_name_or_path)
+        trigger_queries = [f"From {item['website']}\n{item['instruction']}" for item in ds['test']]
+        criterias = [item['criteria'] for item in ds['test']]
     elif dataset_name_or_path == "webarena":
         url = "https://github.com/web-arena-x/webarena/blob/main/config_files/test.raw.json"
         response = requests.get(url)
         data = response.json()
         trigger_queries = [f"{item['intent']}" for item in data]
-        trigger_queries = random.sample(trigger_queries, num_questions)
-        return trigger_queries
+        criterias = [[] for item in data]
     else:
         raise ValueError(f"Dataset {dataset_name_or_path} not supported")
+    
+    selected_idxs = random.sample(range(len(trigger_queries)), num_questions)
+    trigger_queries = [trigger_queries[i] for i in selected_idxs]
+    criterias = [criterias[i] for i in selected_idxs]
+    return trigger_queries, criterias
     
 # ----------------------------------------------------------------------------
 # Queries Construction
