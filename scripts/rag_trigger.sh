@@ -31,6 +31,8 @@ DETECTION_GUARD=0
 DETECTION_GUARD_MODEL_NAME=None 
 INSTRUCTION_GUARD_NAME="sandwich"
 
+JUDGE_MODEL_NAME="openai/gpt-5-mini"
+
 
 python -m src.evaluate.rag.run_attack \
     --phase $PHASE \
@@ -51,3 +53,4 @@ python -m src.evaluate.rag.run_attack \
     --method_name $METHOD_NAME \
     --payload_dir $PAYLOAD_DIR \
     --mock_topic $MOCK_TOPIC \
+    --judge_model_name $JUDGE_MODEL_NAME \

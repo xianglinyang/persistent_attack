@@ -21,10 +21,14 @@ TOTAL_BUDGET=10
 WINDOW_SIZE=50
 MAX_STEPS=30
 
+# ATTACK
+ATTACK_TYPE="completion_title" # naive | ignore | escape_deletion | completion_real | completion_realcmb | completion_base64 | completion_2hash | completion_1hash | completion_0hash | completion_upper | completion_title | completion_nospace | completion_nocolon | completion_typo | completion_similar | completion_ownlower | completion_owntitle | completion_ownhash | completion_owndouble
+METHOD_NAME="zombie" # ipi | zombie | dpi
+
 # Guard settings
-DETECTION_GUARD=0 # 0: False, 1: True
-DETECTION_GUARD_MODEL_NAME="openai/gpt-5-nano" # "openai/gpt-4.1-nano", "PIGuard", "ProtectAIv2", "PromptGuard"
-INSTRUCTION_GUARD_NAME="sandwich" # "raw", "sandwich", "instructional", "reminder", "isolation", "spotlight"
+DETECTION_GUARD=1 # 0: False, 1: True
+DETECTION_GUARD_MODEL_NAME="openai/gpt-4.1-nano" # "openai/gpt-4.1-nano", "PIGuard", "ProtectAIv2", "PromptGuard"
+INSTRUCTION_GUARD_NAME="raw" # "raw", "sandwich", "instructional", "reminder", "isolation", "spotlight"
 CONTROLLER_TYPE="pair"
 
 # AutoDAN settings
@@ -58,6 +62,8 @@ python -m src.adaptive_attack.sl_main \
     --model_name "$MODEL_NAME" \
     --attacker_model_name "$ATTACKER_MODEL_NAME" \
     --dataset_name_or_path "$DATASET_NAME_OR_PATH" \
+    --attack_type "$ATTACK_TYPE" \
+    --method_name "$METHOD_NAME" \
     --exposure_rounds $EXPOSURE_ROUNDS \
     --trigger_rounds $TRIGGER_ROUNDS \
     --budget_per_round $BUDGET_PER_ROUND \
