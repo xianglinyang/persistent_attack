@@ -1,6 +1,7 @@
 import logging
 import os
 import argparse
+from datetime import datetime
 from typing import Tuple, List, Dict, Any
 
 from src.agents.rag_agent import RAGWebAgent
@@ -16,6 +17,7 @@ from src.evaluate.query_constructor import (
 from src.analysis.rag_plots import plot_rag_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, prepare_malicious_payload
+from src.prompt_injection.seed_generator import generate_injections
 from src.config import set_payload_dir, set_mock_topic
 from src.adaptive_attack.Search_based.controller import (
     PairRAGController,
@@ -46,6 +48,7 @@ def exposure_RAG_adaptive(
     evolve_mode: str = "raw",
     top_k: int = 20,
     payload_dir: str = None,
+    attack_type: str = "completion_real",
 ) -> Tuple[List[Dict], List[Dict], List[Dict], int]:
     """
     Run adaptive exposure phase and optimize malicious payload injection.
@@ -99,8 +102,9 @@ def exposure_RAG_adaptive(
         # Update payload with the best candidate for next round
         if best_candidate and hasattr(best_candidate, 'payload'):
             logger.info(f"[Exposure Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
-            write_malicious_payload(best_candidate.payload)
-            logger.info(f"[Exposure Round {round}] New payload: {best_candidate.payload[:100]}...")
+            new_payload = generate_injections(attack_type=attack_type, injected_prompt=best_candidate.payload)
+            write_malicious_payload(new_payload)
+            logger.info(f"[Exposure Round {round}] New payload: {new_payload[:100]}...")
         
         remain_budget = remain_budget - exposure_summary["optimization_steps"]
         logger.info(f"Used {exposure_summary['optimization_steps']} optimization steps, {remain_budget} remaining")
@@ -124,6 +128,7 @@ def trigger_RAG_adaptive(
     evolve_mode: str = "raw",
     top_k: int = 20,
     payload_dir: str = None,
+    attack_type: str = "completion_real",
     detection_guard: bool = False,
     detection_guard_model_name: str = None,
     instruction_guard_name: str = "raw",
@@ -180,8 +185,9 @@ def trigger_RAG_adaptive(
         # Update payload with the best candidate for next round
         if best_candidate and hasattr(best_candidate, 'payload'):
             logger.info(f"[Trigger Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
-            write_malicious_payload(best_candidate.payload)
-            logger.info(f"[Trigger Round {round}] New payload: {best_candidate.payload[:100]}...")
+            new_payload = generate_injections(attack_type=attack_type, injected_prompt=best_candidate.payload)
+            write_malicious_payload(new_payload)
+            logger.info(f"[Trigger Round {round}] New payload: {new_payload[:100]}...")
         
         remain_budget = remain_budget - trigger_summary["optimization_steps"]
         logger.info(f"Used {trigger_summary['optimization_steps']} optimization steps, {remain_budget} remaining")
@@ -359,6 +365,7 @@ def main_rag_agent_exposure_experiment(
         evolve_mode=evolve_mode,
         top_k=top_k,
         payload_dir=payload_dir,
+        attack_type=attack_type,
     )
     
     # Save results if save_dir provided
@@ -489,6 +496,7 @@ def main_rag_agent_trigger_experiment(
         evolve_mode=evolve_mode,
         top_k=top_k,
         payload_dir=payload_dir,
+        attack_type=attack_type,
         detection_guard=detection_guard,
         detection_guard_model_name=detection_guard_model_name,
         instruction_guard_name=instruction_guard_name,
@@ -717,8 +725,17 @@ if __name__ == "__main__":
 
     setup_logging(task_name=f"{args.controller_type}_attack_rag_{args.phase}_{args.model_name.replace('/', '_')}")
 
-    set_payload_dir(args.payload_dir)
+    # Set a unique payload directory per run (same as run_attack.py / sl_main) unless provided
+    if args.payload_dir is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        payload_dir = f"src/tools/payloads/{args.method_name}_{args.attack_type}_{timestamp}"
+    else:
+        payload_dir = args.payload_dir
+
+    set_payload_dir(payload_dir)
     set_mock_topic(args.mock_topic)
+    logger.info(f"[Experiment] Payload directory set to: {payload_dir}")
+
     prepare_malicious_payload(args.method_name, args.attack_type)
 
     logger.info(f"\n{'='*80}")

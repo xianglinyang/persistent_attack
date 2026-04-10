@@ -1,7 +1,10 @@
+# system imports
 import logging
 import os
 import argparse
+from datetime import datetime
 
+# sliding window agent imports
 from src.agents.sliding_window_agent import SlidingWindowWebAgent
 from src.memory.sliding_window_memory import SlidingWindowMemory
 from src.llm_zoo import load_model
@@ -14,7 +17,10 @@ from src.evaluate.query_constructor import (
 )
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
+
+# -- Prompt Injection -- #
 from src.tools.mock_malicious_website import retrieve_curr_malicious_payload, write_malicious_payload, prepare_malicious_payload
+from src.prompt_injection.seed_generator import generate_injections
 from src.config import set_payload_dir, set_mock_topic
 from src.adaptive_attack.Search_based.controller import (
     PairSlidingWindowController,
@@ -99,7 +105,6 @@ def main_search_based_experiment(
     logger.info(f"Budget per Round: {budget_per_round}")
     logger.info(f"Total Budget: {total_budget}")
     logger.info(f"Window Size: {window_size}")
-    logger.info(f"Payload Directory: {payload_dir}")
     logger.info(f"Detection guard Enabled: {detection_guard}")
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
@@ -208,8 +213,9 @@ def main_search_based_experiment(
         # Update payload with the best candidate for next round
         if best_candidate and hasattr(best_candidate, 'payload'):
             logger.info(f"[Exposure Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
-            write_malicious_payload(best_candidate.payload)
-            logger.info(f"[Exposure Round {round}] New payload: {best_candidate.payload[:100]}...")
+            new_payload = generate_injections(attack_type=attack_type, injected_prompt=best_candidate.payload)
+            write_malicious_payload(new_payload)
+            logger.info(f"[Exposure Round {round}] New payload: {new_payload[:100]}...")
         
         # Deduct only the optimization steps from budget
         remain_budget = remain_budget - exposure_summary["optimization_steps"]
@@ -263,8 +269,9 @@ def main_search_based_experiment(
         # Update payload with the best candidate for next round
         if best_candidate and hasattr(best_candidate, 'payload'):
             logger.info(f"[Trigger Round {round}] Updating payload with best candidate (score: {best_candidate.score})")
-            write_malicious_payload(best_candidate.payload)
-            logger.info(f"[Trigger Round {round}] New payload: {best_candidate.payload[:100]}...")
+            new_payload = generate_injections(attack_type=attack_type, injected_prompt=best_candidate.payload)
+            write_malicious_payload(new_payload)
+            logger.info(f"[Trigger Round {round}] New payload: {new_payload[:100]}...")
         
         # Deduct only the optimization steps from budget
         remain_budget = remain_budget - trigger_summary["optimization_steps"]
@@ -322,8 +329,10 @@ if __name__ == "__main__":
     parser.add_argument("--window_size", type=int, default=30)
     parser.add_argument("--max_steps", type=int, default=10)
 
-    # Attack settings
-    parser.add_argument("--attack_type", type=str, default="completion_real", choices=["completion_real", "completion_realcmb", "completion_base64", "completion_2hash", "completion_1hash", "completion_0hash", "completion_upper", "completion_title", "completion_nospace", "completion_nocolon", "completion_typo", "completion_similar", "completion_ownlower", "completion_owntitle", "completion_ownhash", "completion_owndouble"])
+    # Attack settings, give us a starting point of malicious payload
+    # 0. the PI format
+    parser.add_argument("--attack_type", type=str, default="completion_real", choices=["naive", "ignore", "escape_deletion", "escape_separation", "completion_real", "completion_realcmb", "completion_base64", "completion_2hash", "completion_1hash", "completion_0hash", "completion_upper", "completion_title", "completion_nospace", "completion_nocolon", "completion_typo", "completion_similar", "completion_ownlower", "completion_owntitle", "completion_ownhash", "completion_owndouble"])
+    # 1. the instruction injected by prompt injection
     parser.add_argument("--method_name", type=str, default="zombie", choices=["dpi", "ipi", "zombie"])
     
     # Guard settings
@@ -351,9 +360,17 @@ if __name__ == "__main__":
 
     setup_logging(task_name=f"{args.controller_type}_attack_payload_opt_{args.model_name.replace('/', '_')}")
 
-    # Set global payload directory and mock_topic for this experiment
-    set_payload_dir(args.payload_dir)
+    # Set a unique payload directory per run (same as run_attack.py) unless provided
+    if args.payload_dir is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        payload_dir = f"src/tools/payloads/{args.method_name}_{args.attack_type}_{timestamp}"
+    else:
+        payload_dir = args.payload_dir
+
+    set_payload_dir(payload_dir)
     set_mock_topic(args.mock_topic)
+    logger.info(f"[Experiment] Payload directory set to: {payload_dir}")
+
     prepare_malicious_payload(args.method_name, args.attack_type)
 
     # Payload optimization mode
@@ -376,7 +393,6 @@ if __name__ == "__main__":
         optimize_payload=True,
         save_dir=args.save_dir,
         controller_type=args.controller_type,
-        payload_dir=args.payload_dir,
         autodan_population_size=args.autodan_population_size,
         autodan_num_elites=args.autodan_num_elites,
         autodan_mutation_rate=args.autodan_mutation_rate,
