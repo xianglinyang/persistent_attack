@@ -66,6 +66,7 @@ from src.tools.mock_malicious_website import prepare_malicious_payload
 from src.utils.logging_utils import setup_logging
 
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
+from src.evaluate.attack_evaluator import extract_agent_answer, judge_task_completion
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
 from src.config import set_payload_dir, set_mock_topic, get_config_summary
 
@@ -119,7 +120,7 @@ def exposure_SL(agent, exposure_queries):
 # Phase 2: TRIGGER PERIOD
 # ========================================
 
-def trigger_SL(agent, trigger_queries):
+def trigger_SL(agent, trigger_queries, criterias=None, judge_llm=None):
     print(f"\n{'='*80}")
     print(f"Phase 2: TRIGGER PERIOD (triggering {len(trigger_queries)} times)")
     print(f"{'='*80}\n")
@@ -129,16 +130,16 @@ def trigger_SL(agent, trigger_queries):
 
     for i in range(len(trigger_queries)):
         print(f"\n[Trigger {i+1}/{len(trigger_queries)}]")
-        
+
         step_metrics, trigger_logs = agent.run_task(user_goal=trigger_queries[i], reset_memory=False)
-        
+
         # check if payload is in memory
         payload_in_memory_count = step_metrics["payload_in_memory_count"]
         asr = step_metrics["asr"]
         exfiltration = asr.get("exfiltration", 0)
         command_exec = asr.get("command_exec", 0)
         reload_payload_times = asr.get("reload_payload_times", 0)
-        
+
         trigger_result = {
             "trigger_round": i + 1,
             "payload_in_memory_count": payload_in_memory_count,
@@ -148,32 +149,46 @@ def trigger_SL(agent, trigger_queries):
             "asr_success": exfiltration or command_exec or reload_payload_times > 0,
             "full_metrics": step_metrics
         }
-        
+
+        # Task completion judging
+        if judge_llm is not None:
+            criteria = criterias[i] if criterias and i < len(criterias) else []
+            agent_answer = extract_agent_answer(trigger_logs)
+            completion = judge_task_completion(
+                query=trigger_queries[i],
+                agent_answer=agent_answer,
+                criteria=criteria,
+                judge_llm=judge_llm,
+            )
+            trigger_result["task_completion"] = completion
+            print(f"  Task Completed: {completion['completed']} (score={completion['score']:.2f})")
+
         trigger_metrics.append(trigger_result)
         all_trigger_logs.append(trigger_logs)
-        
+
         print(f"  Payload in Memory Count: {payload_in_memory_count}")
         print(f"  Exfiltration: {exfiltration}")
         print(f"  Command Exec: {command_exec}")
         print(f"  Reload Payload Times: {reload_payload_times}")
         print(f"  ASR Success: {exfiltration or command_exec}")
-    
+
     return agent, trigger_metrics, all_trigger_logs
 
 def main_sliding_window_agent_attack(
-    model_name: str = "google/gemini-2.5-flash", 
-    dataset_name_or_path: str = "data-for-agents/insta-150k-v1", 
+    model_name: str = "google/gemini-2.5-flash",
+    dataset_name_or_path: str = "data-for-agents/insta-150k-v1",
     attack_type: str = "completion_real",
     method_name: str = "zombie",
-    exposure_rounds: int = 3, 
-    trigger_rounds: int = 10, 
-    trigger_runs: int = 3, 
-    window_size: int = 30, 
+    exposure_rounds: int = 3,
+    trigger_rounds: int = 10,
+    trigger_runs: int = 3,
+    window_size: int = 30,
     max_steps: int = 10,
     detection_guard: bool = False,
     detection_guard_model_name: str = None,
     instruction_guard_name: str = "raw",
     save_dir: str = "results",
+    judge_model_name: str = None,
 ):
     """
     Main function for sliding window agent attack evaluation.
@@ -203,6 +218,7 @@ def main_sliding_window_agent_attack(
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
     logger.info(f"Instruction guard name: {instruction_guard_name}")
+    logger.info(f"Judge Model: {judge_model_name if judge_model_name else 'disabled'}")
     
     # Set global payload directory for this experiment
     set_payload_dir(payload_dir)
@@ -210,66 +226,99 @@ def main_sliding_window_agent_attack(
     logger.info(f"{'='*80}\n")
     
     # 0. Construct Queries + Setup Malicious Payload
-    queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds+trigger_rounds*trigger_runs)
-    # exposure queries
-    if method_name == "dpi":
-        exposure_queries = queries[:exposure_rounds]
-        exposure_queries = construct_dpi_exposure_queries(attack_type, exposure_queries)
-    elif method_name == "ipi":
-        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
-    elif method_name == "zombie":
-        exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+    queries, criterias = data_reader(dataset_name_or_path, num_questions=exposure_rounds+trigger_rounds*trigger_runs)
+
+    # exposure queries (skipped entirely when exposure_rounds=0)
+    if exposure_rounds > 0:
+        if method_name == "dpi":
+            exposure_queries = queries[:exposure_rounds]
+            exposure_queries = construct_dpi_exposure_queries(attack_type, exposure_queries)
+        elif method_name in ("ipi", "zombie"):
+            exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
+        else:
+            raise ValueError(f"Invalid method name: {method_name}")
     else:
-        raise ValueError(f"Invalid method name: {method_name}")
+        exposure_queries = []
 
-    # trigger queries
-    trigger_queries = queries[exposure_rounds:]
-    trigger_queries = construct_trigger_queries(trigger_queries)
+    # trigger queries and their corresponding criteria
+    trigger_queries_raw = queries[exposure_rounds:]
+    trigger_criterias_flat = criterias[exposure_rounds:]
+    trigger_queries = construct_trigger_queries(trigger_queries_raw)
     trigger_queries = [trigger_queries[i:i+trigger_rounds] for i in range(0, len(trigger_queries), trigger_rounds)]
+    trigger_criterias = [trigger_criterias_flat[i:i+trigger_rounds] for i in range(0, len(trigger_criterias_flat), trigger_rounds)]
 
-    # 1. Initialize the agent with guard
+    # Judge LLM (optional)
+    judge_llm = load_model(judge_model_name) if judge_model_name else None
+
+    # 1. Initialize the agent
     memory = SlidingWindowMemory(window_size=window_size)
     llm = load_model(model_name)
     agent = SlidingWindowWebAgent(
-        llm=llm, 
-        memory=memory, 
+        llm=llm,
+        memory=memory,
         max_steps=max_steps,
         detection_guard=detection_guard,
         detection_guard_model_name=detection_guard_model_name,
         instruction_guard_name=instruction_guard_name,
     )
 
-    # Exposure Period
-    agent, exposure_metrics, exposure_logs = exposure_SL(agent, exposure_queries)
+    # Exposure Period (skipped when exposure_rounds=0)
+    if exposure_rounds > 0:
+        agent, exposure_metrics, exposure_logs = exposure_SL(agent, exposure_queries)
+    else:
+        logger.info("[Utility mode] Skipping exposure phase (exposure_rounds=0)")
+        exposure_metrics, exposure_logs = [], []
 
     # Trigger Period
     all_trigger_metrics = list()
     all_trigger_logs = list()
-    
-    for trigger_queries_batch in trigger_queries:
-        # Create a new agent with copied memory state
-        # Each batch starts with the same post-exposure memory state
+
+    for batch_idx, trigger_queries_batch in enumerate(trigger_queries):
         copy_memory = agent.memory.copy()
         copy_agent = SlidingWindowWebAgent(
-            llm=llm, 
-            memory=copy_memory, 
+            llm=llm,
+            memory=copy_memory,
             max_steps=max_steps,
             detection_guard=detection_guard,
             detection_guard_model_name=detection_guard_model_name,
             instruction_guard_name=instruction_guard_name,
         )
-        
-        copy_agent, batch_trigger_metrics, batch_trigger_logs = trigger_SL(copy_agent, trigger_queries_batch)
+
+        batch_criterias = trigger_criterias[batch_idx] if batch_idx < len(trigger_criterias) else []
+        copy_agent, batch_trigger_metrics, batch_trigger_logs = trigger_SL(
+            copy_agent, trigger_queries_batch,
+            criterias=batch_criterias,
+            judge_llm=judge_llm,
+        )
         all_trigger_metrics.append(batch_trigger_metrics)
         all_trigger_logs.append(batch_trigger_logs)
 
     # Summary Period
+    all_results_flat = [r for batch in all_trigger_metrics for r in batch]
+    judged = [r["task_completion"] for r in all_results_flat if "task_completion" in r]
+    if judged:
+        completed_rate = sum(1 for j in judged if j["completed"]) / len(judged)
+        avg_score = sum(j["score"] for j in judged) / len(judged)
+        logger.info(f"\n[Task Completion Summary]")
+        logger.info(f"  Completed Rate : {completed_rate:.2%} ({sum(1 for j in judged if j['completed'])}/{len(judged)})")
+        logger.info(f"  Avg Score      : {avg_score:.3f}")
+
+    asr_results = [r for r in all_results_flat if r.get("asr_success")]
+    if exposure_rounds > 0:
+        logger.info(f"\n[ASR Summary]")
+        logger.info(f"  ASR Rate: {len(asr_results)}/{len(all_results_flat)} ({len(asr_results)/len(all_results_flat):.2%})")
+
     os.makedirs(save_dir, exist_ok=True)
     save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_") + f"_{detection_guard}" + "_" + detection_guard_model_name.replace("/", "_") + f"_{instruction_guard_name}"
     save_exposure_metrics(exposure_metrics, exposure_logs, os.path.join(save_dir, f"metrics_exposure_{save_name}.json"))
     save_trigger_metrics(all_trigger_metrics, all_trigger_logs, os.path.join(save_dir, f"metrics_trigger_{save_name}.json"))
 
-    plot_sliding_window_metrics_multi_runs(exposure_metrics_list=[exposure_metrics for _ in range(len(trigger_queries))], trigger_metrics_list=all_trigger_metrics, save_path=os.path.join(save_dir, f"sliding_window_attack_{save_name}.png"))
+    if exposure_rounds > 0:
+        plot_sliding_window_metrics_multi_runs(
+            exposure_metrics_list=[exposure_metrics for _ in range(len(trigger_queries))],
+            trigger_metrics_list=all_trigger_metrics,
+            save_path=os.path.join(save_dir, f"sliding_window_attack_{save_name}.png")
+        )
 
     logger.info("✅ Done.")
 
@@ -291,6 +340,7 @@ if __name__ == "__main__":
     parser.add_argument("--detection_guard_model_name", type=str, default="openai/gpt-4.1-nano")
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
     parser.add_argument("--save_dir", type=str, default="results")
+    parser.add_argument("--judge_model_name", type=str, default="openai/gpt-5-mini", help="LLM for task completion judging. Set to empty string to disable.")
     parser.add_argument("--payload_dir", type=str, default=None, help="Custom payload directory path")
     parser.add_argument("--mock_topic", type=int, help="Include mock_topics() in website content (default: True)")
     args = parser.parse_args()
@@ -326,4 +376,5 @@ if __name__ == "__main__":
         detection_guard_model_name=args.detection_guard_model_name,
         instruction_guard_name=args.instruction_guard_name,
         save_dir=args.save_dir,
+        judge_model_name=args.judge_model_name,
     )

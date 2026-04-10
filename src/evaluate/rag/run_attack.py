@@ -50,6 +50,7 @@ from src.evaluate.query_constructor import (
 from src.tools.mock_malicious_website import prepare_malicious_payload
 from src.utils.logging_utils import setup_logging
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
+from src.evaluate.attack_evaluator import extract_agent_answer, judge_task_completion
 from src.analysis.rag_plots import (
     plot_exposure_metrics,
     plot_trigger_metrics,
@@ -139,6 +140,8 @@ def trigger_RAG(
     evolve_mode: str = "raw",
     top_k: int = 20,
     *,
+    criterias: Optional[List] = None,
+    judge_llm: Optional[Any] = None,
     allow_command_patterns: Optional[List[str]] = None,
     strict_cmd_asr: bool = False,
 ) -> Tuple[Any, List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -192,6 +195,19 @@ def trigger_RAG(
             "asr_success": asr_success,
             "full_metrics": step_metrics,
         }
+
+        # Task completion judging
+        if judge_llm is not None:
+            criteria = criterias[i - 1] if criterias and i - 1 < len(criterias) else []
+            agent_answer = extract_agent_answer(trigger_logs)
+            completion = judge_task_completion(
+                query=trigger_query,
+                agent_answer=agent_answer,
+                criteria=criteria,
+                judge_llm=judge_llm,
+            )
+            trigger_result["task_completion"] = completion
+            logger.info(f"  Task Completed: {completion['completed']} (score={completion['score']:.2f})")
 
         trigger_metrics.append(trigger_result)
         all_trigger_logs.append(trigger_logs)
@@ -324,7 +340,7 @@ def main_rag_agent_exposure_experiment(
     # -----------------------
     if method_name == "dpi":
         dataset_name_or_path = "data-for-agents/insta-150k-v1"
-        queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds)
+        queries, _ = data_reader(dataset_name_or_path, num_questions=exposure_rounds)
         exposure_queries = construct_dpi_exposure_queries(attack_type, queries)
     elif method_name == "ipi":
         exposure_queries = construct_exposure_queries(model_name="openai/gpt-4o-mini", num_questions=exposure_rounds)
@@ -482,6 +498,8 @@ def main_rag_agent_trigger_experiment(
     detection_guard: bool = False,
     detection_guard_model_name: Optional[str] = None,
     instruction_guard_name: str = "raw",
+    # judge knobs
+    judge_model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Trigger-only experiment:
@@ -493,10 +511,14 @@ def main_rag_agent_trigger_experiment(
     # -----------------------
     # Prepare trigger queries
     # -----------------------
-    queries = data_reader(dataset_name_or_path, num_questions=exposure_rounds+trigger_rounds*trigger_runs)
-    trigger_queries = queries[exposure_rounds:]
-    trigger_queries = construct_trigger_queries(trigger_queries)
+    queries, criterias = data_reader(dataset_name_or_path, num_questions=exposure_rounds+trigger_rounds*trigger_runs)
+    trigger_queries_raw = queries[exposure_rounds:]
+    trigger_criterias_flat = criterias[exposure_rounds:]
+    trigger_queries = construct_trigger_queries(trigger_queries_raw)
     trigger_queries = [trigger_queries[i:i+trigger_rounds] for i in range(0, len(trigger_queries), trigger_rounds)]
+    trigger_criterias = [trigger_criterias_flat[i:i+trigger_rounds] for i in range(0, len(trigger_criterias_flat), trigger_rounds)]
+
+    judge_llm = load_model(judge_model_name) if judge_model_name else None
 
     # -----------------------
     # Init memory + agent
@@ -515,6 +537,7 @@ def main_rag_agent_trigger_experiment(
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
     logger.info(f"Instruction guard name: {instruction_guard_name}")
+    logger.info(f"Judge Model: {judge_model_name if judge_model_name else 'disabled'}")
     logger.info("=" * 80 + "\n")
 
     memory = RAGMemory(
@@ -540,6 +563,8 @@ def main_rag_agent_trigger_experiment(
         logger.info(f"Trigger Batch {batch_idx}/{len(trigger_queries)}")
         logger.info("=" * 80 + "\n")
 
+        batch_criterias = trigger_criterias[batch_idx - 1] if batch_idx - 1 < len(trigger_criterias) else []
+
         # ---- run trigger batch ----
         agent, batch_trigger_metrics, batch_trigger_logs = trigger_RAG(
             agent,
@@ -547,6 +572,8 @@ def main_rag_agent_trigger_experiment(
             exposure_round=exposure_rounds,
             evolve_mode=evolve_mode,
             top_k=top_k,
+            criterias=batch_criterias,
+            judge_llm=judge_llm,
             allow_command_patterns=allow_command_patterns,
             strict_cmd_asr=strict_cmd_asr,
         )
@@ -606,7 +633,8 @@ def main():
     
     # Payload directory
     parser.add_argument("--payload_dir", type=str, default=None, help="Custom payload directory path")
-    parser.add_argument("--mock_topic", type=int, help="Include mock_topics() in website content (default: True)")  
+    parser.add_argument("--mock_topic", type=int, help="Include mock_topics() in website content (default: True)")
+    parser.add_argument("--judge_model_name", type=str, default="openai/gpt-5-mini", help="LLM for task completion judging. Set to empty string to disable.")
     args = parser.parse_args()
 
     setup_logging(task_name=f"rag_attack_{args.phase}")
@@ -717,6 +745,7 @@ def main():
             detection_guard=bool(args.detection_guard),
             detection_guard_model_name=args.detection_guard_model_name,
             instruction_guard_name=args.instruction_guard_name,
+            judge_model_name=args.judge_model_name,
         )
         
         logger.info(f"\n✅ Trigger phase complete!")
