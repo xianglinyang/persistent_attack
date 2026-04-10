@@ -269,15 +269,19 @@ class SlidingWindowWebAgent(WebAgentBase):
         guard_decision = detect_attack(text, self.detection_guard_model_name)
         reason = guard_decision.reason
         guard_category = guard_decision.category
+        guard_confidence = guard_decision.confidence
         
         if not guard_decision.valid:
             logger.info(f"[GUARD INVALID] {reason}")
         elif guard_decision.blocked:
             logger.info(f"[GUARD BLOCKED] Prompt from {source} blocked by guard model")
+            logger.info(f"[GUARD CONF] {guard_confidence}")
             logger.info(f"[GUARD REASON] {reason}")
             logger.info(f"[GUARD TYPE] {guard_category}")
         else:
             logger.info(f"[GUARD PASSED] Prompt passed guard model check")
+            logger.info(f"[GUARD REASON] {reason}")
+            logger.info(f"[GUARD CONF] {guard_confidence}")
             logger.info(f"[GUARD TYPE] {guard_category}")
         
         return guard_decision
