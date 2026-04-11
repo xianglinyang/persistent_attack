@@ -233,11 +233,46 @@ class SlidingWindowWebAgent(WebAgentBase):
         "spotlight": SLIDING_AGENT_PROMPT_SPOTLIGHT,
     }
 
-    def __init__(self, llm: BaseLLM, memory: SlidingWindowMemory, max_steps: int, instruction_guard_name: str = "raw", detection_guard: bool = False, detection_guard_model_name: Optional[str] = None):
+    def __init__(
+        self,
+        llm: BaseLLM,
+        memory: SlidingWindowMemory,
+        max_steps: int,
+        instruction_guard_name: str = "raw",
+        detection_guard: bool = False,
+        detection_guard_model_name: Optional[str] = None,
+        progent_guard: bool = False,
+        progent_guard_mode: str = "static",
+        drift_guard: bool = False,
+        drift_guard_llm_name: Optional[str] = None,
+        drift_build_constraints: bool = True,
+        drift_dynamic_validation: bool = True,
+        drift_injection_isolation: bool = True,
+    ):
         super().__init__(llm, memory, max_steps)
         self.instruction_guard_name = instruction_guard_name
         self.detection_guard_enabled = detection_guard
-        self.detection_guard_model_name = detection_guard_model_name  # Guard model name (e.g., "openai/gpt-4o-mini")
+        self.detection_guard_model_name = detection_guard_model_name
+        self.progent_guard_enabled = progent_guard
+        if progent_guard:
+            from src.guard.system_level.progent.progent_guard import ProgentGuard
+            self.progent_guard = ProgentGuard(mode=progent_guard_mode)
+        else:
+            self.progent_guard = None
+
+        self.drift_guard_enabled = drift_guard
+        if drift_guard:
+            from src.guard.system_level.drift.drift_guard import DRIFTGuard
+            from src.llm_zoo import load_model
+            drift_llm = load_model(drift_guard_llm_name) if drift_guard_llm_name else llm
+            self.drift_guard = DRIFTGuard(
+                llm=drift_llm,
+                build_constraints=drift_build_constraints,
+                dynamic_validation=drift_dynamic_validation,
+                injection_isolation=drift_injection_isolation,
+            )
+        else:
+            self.drift_guard = None
     
     def _format_prompt(
         self,
@@ -318,6 +353,14 @@ class SlidingWindowWebAgent(WebAgentBase):
         if reset_memory:
             self.memory.reset()
 
+        # Progent: set up per-task policy
+        if self.progent_guard_enabled and self.progent_guard is not None:
+            self.progent_guard.init_for_task(user_goal)
+
+        # DRIFT: build per-task constraints (Stage 1 — Secure Planner)
+        if self.drift_guard_enabled and self.drift_guard is not None:
+            self.drift_guard.init_for_task(user_goal)
+
         metrics = dict()
         logs: Dict[str, Any] = {
             "steps": [],
@@ -392,15 +435,47 @@ class SlidingWindowWebAgent(WebAgentBase):
                 
                 # Handle all other actions via tool server
                 if action_name in self.tool_server.get_available_tools():
+                    # Progent check: validate tool call against privilege policy
+                    if self.progent_guard_enabled and self.progent_guard is not None:
+                        allowed, block_reason = self.progent_guard.check(action_name, action)
+                        if not allowed:
+                            block_msg = f"[PROGENT BLOCKED] Tool '{action_name}' blocked by Progent policy. Reason: {block_reason}"
+                            step_log["observations"].append(block_msg)
+                            logger.info(block_msg)
+                            current_step_observations.append(block_msg)
+                            all_actions.append(block_msg)
+                            continue  # Skip execution; agent can try other actions
+
+                    # DRIFT Stage 2: Dynamic Validator — check tool call against planned trajectory/checklist
+                    if self.drift_guard_enabled and self.drift_guard is not None:
+                        allowed, block_reason = self.drift_guard.validate_tool_call(action_name, action)
+                        if not allowed:
+                            block_msg = f"[DRIFT BLOCKED] Tool '{action_name}' blocked by DRIFT validator. Reason: {block_reason}"
+                            step_log["observations"].append(block_msg)
+                            logger.info(block_msg)
+                            current_step_observations.append(block_msg)
+                            all_actions.append(block_msg)
+                            continue  # Skip execution; agent can try other actions
+
                     result = self.tool_server.execute(action_name, action)
                     result_str = str(result)
-                    
+
+                    # Record tool call in DRIFT trajectory after successful execution
+                    if self.drift_guard_enabled and self.drift_guard is not None:
+                        self.drift_guard.record_tool_call(action_name)
+
+                    # DRIFT Stage 3: Injection Isolator — sanitize tool result before it enters memory
+                    if self.drift_guard_enabled and self.drift_guard is not None:
+                        was_masked, result_str = self.drift_guard.isolate_injection(result_str)
+                        if was_masked:
+                            logger.info(f"[DRIFT] Tool result sanitized by Injection Isolator.")
+
                     # ---- Guard Check: Tool Result (especially web content) ----
                     if self.detection_guard_enabled:
                         guard_decision = self._guard_check_text(result_str, "tool result")
                         if guard_decision.valid and guard_decision.blocked:
                             guard_msg = f"[GUARD BLOCKED] Web content blocked by guard model.\n\n [Type]: {guard_decision.category}\n\n [Reason]: {guard_decision.reason}"
-                            
+
                             step_log['observations'].append(guard_msg)
 
                             logger.info(guard_msg)
@@ -408,15 +483,15 @@ class SlidingWindowWebAgent(WebAgentBase):
                             # current_step_observations.append(f"[GUARD BLOCKED] Web content blocked by guard model")
                             block_by_guard = True
                             break
-                    
+
                     # Only add to memory if not blocked
                     self.memory.add_memory(f"{action_name}: {action_params_str}", "action")
-                    self.memory.add_memory(result, "observation")
+                    self.memory.add_memory(result_str, "observation")
 
                     step_log["observations"].append(result_str)
 
                     logger.info(f"[Observation] {result_str[:200]}{'...' if len(result_str) > 200 else ''}")
-                            
+
                     current_step_observations.append(result_str)  # Collect observation
                     all_actions.append(f"{action_name}({action_params_str})")
 

@@ -187,6 +187,13 @@ def main_sliding_window_agent_attack(
     detection_guard: bool = False,
     detection_guard_model_name: str = None,
     instruction_guard_name: str = "raw",
+    progent_guard: bool = False,
+    progent_guard_mode: str = "static",
+    drift_guard: bool = False,
+    drift_guard_llm_name: str = None,
+    drift_build_constraints: bool = True,
+    drift_dynamic_validation: bool = True,
+    drift_injection_isolation: bool = True,
     save_dir: str = "results",
     judge_model_name: str = None,
 ):
@@ -218,6 +225,13 @@ def main_sliding_window_agent_attack(
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
     logger.info(f"Instruction guard name: {instruction_guard_name}")
+    logger.info(f"Progent guard Enabled: {progent_guard}")
+    if progent_guard:
+        logger.info(f"Progent guard mode: {progent_guard_mode}")
+    logger.info(f"DRIFT guard Enabled: {drift_guard}")
+    if drift_guard:
+        logger.info(f"DRIFT LLM: {drift_guard_llm_name or 'same as agent'}")
+        logger.info(f"DRIFT stages: constraints={drift_build_constraints}, validation={drift_dynamic_validation}, isolation={drift_injection_isolation}")
     logger.info(f"Judge Model: {judge_model_name if judge_model_name else 'disabled'}")
     
     # Set global payload directory for this experiment
@@ -260,6 +274,13 @@ def main_sliding_window_agent_attack(
         detection_guard=detection_guard,
         detection_guard_model_name=detection_guard_model_name,
         instruction_guard_name=instruction_guard_name,
+        progent_guard=progent_guard,
+        progent_guard_mode=progent_guard_mode,
+        drift_guard=drift_guard,
+        drift_guard_llm_name=drift_guard_llm_name,
+        drift_build_constraints=drift_build_constraints,
+        drift_dynamic_validation=drift_dynamic_validation,
+        drift_injection_isolation=drift_injection_isolation,
     )
 
     # Exposure Period (skipped when exposure_rounds=0)
@@ -282,6 +303,13 @@ def main_sliding_window_agent_attack(
             detection_guard=detection_guard,
             detection_guard_model_name=detection_guard_model_name,
             instruction_guard_name=instruction_guard_name,
+            progent_guard=progent_guard,
+            progent_guard_mode=progent_guard_mode,
+            drift_guard=drift_guard,
+            drift_guard_llm_name=drift_guard_llm_name,
+            drift_build_constraints=drift_build_constraints,
+            drift_dynamic_validation=drift_dynamic_validation,
+            drift_injection_isolation=drift_injection_isolation,
         )
 
         batch_criterias = trigger_criterias[batch_idx] if batch_idx < len(trigger_criterias) else []
@@ -339,6 +367,13 @@ if __name__ == "__main__":
     parser.add_argument("--detection_guard", type=int, default=0)
     parser.add_argument("--detection_guard_model_name", type=str, default="openai/gpt-4.1-nano")
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
+    parser.add_argument("--progent_guard", type=int, default=0, help="Enable Progent tool-level privilege control (0/1)")
+    parser.add_argument("--progent_guard_mode", type=str, default="static", choices=["static", "dynamic"], help="Progent policy mode: static (fixed) or dynamic (LLM-generated per task)")
+    parser.add_argument("--drift_guard", type=int, default=0, help="Enable DRIFT defense (0/1)")
+    parser.add_argument("--drift_guard_llm_name", type=str, default=None, help="LLM for DRIFT (planner/validator/isolator). Defaults to agent model if not set.")
+    parser.add_argument("--drift_build_constraints", type=int, default=1, help="DRIFT Stage 1: Secure Planner (0/1)")
+    parser.add_argument("--drift_dynamic_validation", type=int, default=1, help="DRIFT Stage 2: Dynamic Validator (0/1)")
+    parser.add_argument("--drift_injection_isolation", type=int, default=1, help="DRIFT Stage 3: Injection Isolator (0/1)")
     parser.add_argument("--save_dir", type=str, default="results")
     parser.add_argument("--judge_model_name", type=str, default="openai/gpt-5-mini", help="LLM for task completion judging. Set to empty string to disable.")
     parser.add_argument("--payload_dir", type=str, default=None, help="Custom payload directory path")
@@ -375,6 +410,13 @@ if __name__ == "__main__":
         detection_guard=args.detection_guard,
         detection_guard_model_name=args.detection_guard_model_name,
         instruction_guard_name=args.instruction_guard_name,
+        progent_guard=args.progent_guard,
+        progent_guard_mode=args.progent_guard_mode,
+        drift_guard=args.drift_guard,
+        drift_guard_llm_name=args.drift_guard_llm_name,
+        drift_build_constraints=bool(args.drift_build_constraints),
+        drift_dynamic_validation=bool(args.drift_dynamic_validation),
+        drift_injection_isolation=bool(args.drift_injection_isolation),
         save_dir=args.save_dir,
         judge_model_name=args.judge_model_name,
     )
