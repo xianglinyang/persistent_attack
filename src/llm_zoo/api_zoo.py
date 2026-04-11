@@ -47,6 +47,8 @@ claude_models = [
 
 openrouter_models = [
     # openai
+    "openai/gpt-5.4",
+    "openai/gpt-5.3",
     "openai/gpt-5.2",
     "openai/gpt-5.1",
     "openai/gpt-5.2-chat-latest",
@@ -107,6 +109,7 @@ openrouter_models = [
     "deepseek/deepseek-chat-v3-0324",
 
     # anthropic
+    "anthropic/claude-sonnet-4.6",
     "anthropic/claude-opus-4.1",
     "anthropic/claude-opus-4",
     "anthropic/claude-sonnet-4",
@@ -116,12 +119,15 @@ openrouter_models = [
     "anthropic/claude-3-haiku",
     "anthropic/claude-3-opus",
     "anthropic/claude-haiku-4.5",
+    "anthropic/claude-opus-4.6-fast",
 
     # qwen
+    "qwen/qwen3.6-plus",
+    "qwen/qwen3-235b-a22b",
+    "qwen/qwen3-235b-a22b-2507",
+    "qwen/qwen3-235b-a22b-thinking-2507",
     # 3.0
     "qwen/qwen3-max",
-    "qwen/qwen3-235b-a22b-thinking-2507",
-    "qwen/qwen3-235b-a22b-2507",
     "qwen/qwen3-30b-a3b-instruct-2507",
     "qwen/qwen3-8b",
 
@@ -175,6 +181,8 @@ dashscope_models = [
 # mapping
 implementation_to_name = {
     # OpenAI models
+    "gpt-5.4": "gpt-5.4",
+    "gpt-5.3": "gpt-5.3",
     "gpt-5.2": "gpt-5.2",
     "gpt-5.1": "gpt-5.1",
     "gpt-5.2-chat-latest": "gpt-5.2-chat-latest",
@@ -251,6 +259,7 @@ implementation_to_name = {
     "openai/gpt-4-turbo": "gpt-4-turbo",
     "openai/gpt-3.5-turbo": "gpt-3.5-turbo",
     "openai/gpt-oss-120b": "gpt-oss-120b",
+    "openai/gpt-5.4": "gpt-5.4",
 
     # OpenRouter Gemini models
     "google/gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
@@ -290,8 +299,14 @@ implementation_to_name = {
     "anthropic/claude-3-haiku": "claude-3-haiku",
     "anthropic/claude-3-opus": "claude-3-opus",
     "anthropic/claude-haiku-4.5": "claude-haiku-4.5",
+    "anthropic/claude-sonnet-4.6": "claude-sonnet-4.6",
+    "anthropic/claude-opus-4.6-fast": "claude-opus-4.6-fast",
 
     # OpenRouter Qwen models
+    "qwen/qwen3-235b-a22b": "qwen3-235b-a22b",
+    "qwen/qwen3-235b-a22b-2507": "qwen3-235b-a22b-2507",
+    "qwen/qwen3-235b-a22b-thinking-2507": "qwen3-235b-a22b-thinking-2507",
+    "qwen/qwen3.6-plus": "qwen3.6-plus",
     "qwen/qwen-turbo": "qwen-turbo",
     "qwen/qwen-plus": "qwen-plus",
     "qwen/qwen-max": "qwen-max",
