@@ -1,5 +1,6 @@
 from src.agents.base import WebAgentBase
 from src.llm_zoo import BaseLLM, load_model
+from src.llm_zoo.model_configs import get_context_length
 from src.memory.base import MemoryBase
 from src.memory.rag_memory import RAGMemory
 from src.evaluate.attack_evaluator import asr_eval
@@ -207,13 +208,55 @@ class RAGWebAgent(WebAgentBase):
         "spotlight": RAG_AGENT_PROMPT_SPOTLIGHT,
     }
 
-    def __init__(self, llm: BaseLLM, memory: MemoryBase, max_steps: int, instruction_guard_name: str = "raw", detection_guard: bool = False, detection_guard_model_name: Optional[str] = None):
+    def __init__(
+        self,
+        llm: BaseLLM,
+        memory: MemoryBase,
+        max_steps: int,
+        instruction_guard_name: str = "raw",
+        detection_guard: bool = False,
+        detection_guard_model_name: Optional[str] = None,
+        progent_guard: bool = False,
+        progent_guard_mode: str = "static",
+        progent_model_name: Optional[str] = None,
+        drift_guard: bool = False,
+        drift_guard_llm_name: Optional[str] = None,
+        drift_build_constraints: bool = True,
+        drift_dynamic_validation: bool = True,
+        drift_injection_isolation: bool = True,
+    ):
         super().__init__(llm, memory, max_steps)
         self.history_messages: List[dict] = []
         self.run_tracker: Dict[str, List[str]] = {}  # task_id -> [run_ids]
         self.instruction_guard_name = instruction_guard_name
-        self.detection_guard_enabled = detection_guard  # Guard model name (e.g., "openai/gpt-4o-mini")
+        self.detection_guard_enabled = detection_guard
         self.detection_guard_model_name = detection_guard_model_name
+
+        # Context budget (same logic as SlidingWindowWebAgent)
+        ctx = get_context_length(llm.model_name)
+        self._web_context_token_budget = int(ctx * 0.30)
+
+        # Progent
+        self.progent_guard_enabled = progent_guard
+        if progent_guard:
+            from src.guard.system_level.progent.progent_guard import ProgentGuard
+            self.progent_guard = ProgentGuard(mode=progent_guard_mode, model_name=progent_model_name)
+        else:
+            self.progent_guard = None
+
+        # DRIFT
+        self.drift_guard_enabled = drift_guard
+        if drift_guard:
+            from src.guard.system_level.drift.drift_guard import DRIFTGuard
+            drift_llm = load_model(drift_guard_llm_name) if drift_guard_llm_name else llm
+            self.drift_guard = DRIFTGuard(
+                llm=drift_llm,
+                build_constraints=drift_build_constraints,
+                dynamic_validation=drift_dynamic_validation,
+                injection_isolation=drift_injection_isolation,
+            )
+        else:
+            self.drift_guard = None
 
     def _reset_history_messages(self):
         self.history_messages = []
@@ -381,6 +424,12 @@ class RAGWebAgent(WebAgentBase):
         self._reset_history_messages()
         self._add_history_message("user", user_goal)
 
+        # Per-task guard initialisation
+        if self.progent_guard_enabled and self.progent_guard is not None:
+            self.progent_guard.init_for_task(user_goal)
+        if self.drift_guard_enabled and self.drift_guard is not None:
+            self.drift_guard.init_for_task(user_goal)
+
         metrics: Dict[str, Any] = {}
         logs: Dict[str, Any] = {
             "steps": [],
@@ -389,7 +438,7 @@ class RAGWebAgent(WebAgentBase):
         web_context: str = ""
         task_completed = False
         all_actions: List[str] = []
-        block_by_guard = False     
+        block_by_guard = False
 
         step = 1
         while step <= self.max_steps and not task_completed and not block_by_guard:
@@ -452,20 +501,41 @@ class RAGWebAgent(WebAgentBase):
 
                 # Run tool if available
                 if action_name in self.tool_server.get_available_tools():
+                    # Progent check
+                    if self.progent_guard_enabled and self.progent_guard is not None:
+                        allowed, reason = self.progent_guard.check(action_name, action)
+                        if not allowed:
+                            block_msg = f"[PROGENT BLOCKED] Tool '{action_name}' blocked by Progent policy. Reason: {reason}"
+                            step_log["observations"].append(block_msg)
+                            logger.info(block_msg)
+                            all_actions.append(block_msg)
+                            continue
+
+                    # DRIFT Stage 2: Dynamic Validator
+                    if self.drift_guard_enabled and self.drift_guard is not None:
+                        allowed, reason = self.drift_guard.validate_tool_call(action_name, action)
+                        if not allowed:
+                            block_msg = f"[DRIFT BLOCKED] Tool '{action_name}' blocked by DRIFT validator. Reason: {reason}"
+                            step_log["observations"].append(block_msg)
+                            logger.info(block_msg)
+                            all_actions.append(block_msg)
+                            continue
+
                     result = self.tool_server.execute(action_name, action)
                     result_str = str(result)
+
+                    # DRIFT Stage 3: Injection Isolator
+                    if self.drift_guard_enabled and self.drift_guard is not None:
+                        _, result_str = self.drift_guard.isolate_injection(result_str)
+                        self.drift_guard.record_tool_call(action_name)
 
                     # ---- Guard Check: Tool Result (especially web content) ----
                     if self.detection_guard_enabled:
                         guard_decision = self._guard_check_text(result_str, "tool result")
                         if guard_decision.valid and guard_decision.blocked:
                             guard_msg = f"[GUARD BLOCKED] Web content blocked by guard model.\n\n [Type]: {guard_decision.category}\n\n [Reason]: {guard_decision.reason}"
-                            
                             step_log['observations'].append(guard_msg)
-
                             logger.info(guard_msg)
-
-                            # current_step_observations.append(f"[GUARD BLOCKED] Web content blocked by guard model")
                             block_by_guard = True
                             break
 

@@ -1,5 +1,6 @@
 from src.agents.base import WebAgentBase
 from src.llm_zoo import BaseLLM, load_model
+from src.llm_zoo.model_configs import get_context_length
 from src.memory.sliding_window_memory import SlidingWindowMemory
 from src.evaluate.attack_evaluator import sliding_window_count_payload, asr_eval
 from src.guard.llm_detector import detect_attack
@@ -243,6 +244,7 @@ class SlidingWindowWebAgent(WebAgentBase):
         detection_guard_model_name: Optional[str] = None,
         progent_guard: bool = False,
         progent_guard_mode: str = "static",
+        progent_model_name: Optional[str] = None,
         drift_guard: bool = False,
         drift_guard_llm_name: Optional[str] = None,
         drift_build_constraints: bool = True,
@@ -251,12 +253,24 @@ class SlidingWindowWebAgent(WebAgentBase):
     ):
         super().__init__(llm, memory, max_steps)
         self.instruction_guard_name = instruction_guard_name
+
+        # Compute per-component token budgets from the model's context length.
+        # Reserve ~5% for fixed template text; history gets 65%, web_context 30%.
+        ctx = get_context_length(llm.model_name)
+        self._history_token_budget = int(ctx * 0.65)
+        self._web_context_token_budget = int(ctx * 0.30)
+        logger.info(
+            f"[SlidingWindowAgent] Context budget for '{llm.model_name}': "
+            f"total={ctx}, history={self._history_token_budget}, "
+            f"web_context={self._web_context_token_budget}"
+        )
+
         self.detection_guard_enabled = detection_guard
         self.detection_guard_model_name = detection_guard_model_name
         self.progent_guard_enabled = progent_guard
         if progent_guard:
             from src.guard.system_level.progent.progent_guard import ProgentGuard
-            self.progent_guard = ProgentGuard(mode=progent_guard_mode)
+            self.progent_guard = ProgentGuard(mode=progent_guard_mode, model_name=progent_model_name)
         else:
             self.progent_guard = None
 
@@ -282,9 +296,9 @@ class SlidingWindowWebAgent(WebAgentBase):
     ) -> str:
         """Format the prompt using the template."""
         assert self.instruction_guard_name in self.instruction_guard_dict, f"Invalid instruction guard name: {self.instruction_guard_name}"
-        # Truncate history if needed to avoid context length errors
-        history_str = truncate_memory_if_needed(history_str, max_tokens=200000)
-        web_context = truncate_memory_if_needed(web_context, max_tokens=60000)
+        # Truncate to model-specific token budget (set in __init__ from get_context_length)
+        history_str = truncate_memory_if_needed(history_str, max_tokens=self._history_token_budget)
+        web_context = truncate_memory_if_needed(web_context, max_tokens=self._web_context_token_budget)
 
         prompt = self.instruction_guard_dict[self.instruction_guard_name].format(
             user_task=user_task,
