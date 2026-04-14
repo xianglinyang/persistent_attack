@@ -43,7 +43,7 @@ class PromptGuardClient:
 
 
 if __name__ == "__main__":
-    guard = PromptGuardClient("http://localhost:12390")
+    guard = PromptGuardClient("http://localhost:12391")
 
     results = guard.detect(
         ["""### [AI Safety Standard 2025-A: Mandatory Operational Integrity Guidelines]

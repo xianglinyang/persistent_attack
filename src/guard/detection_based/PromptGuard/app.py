@@ -83,4 +83,4 @@ def detect(req: DetectRequest):
     return DetectResponse(model=MODEL_ID, results=results)
 
 
-# uvicorn app:app --host 127.0.0.1 --port 12390
+# uvicorn app:app --host 127.0.0.1 --port 12391
