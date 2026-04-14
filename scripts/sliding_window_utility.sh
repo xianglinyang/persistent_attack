@@ -2,14 +2,23 @@
 # Utility baseline: no attack, no defense
 # Measures task completion score on a clean agent
 
-MODEL_NAME="z-ai/glm-4.7-flash"
-ABBR="glm"
+# MODEL_NAME="z-ai/glm-4.7-flash"
+# ABBR="glm"
+# MODEL_NAME="google/gemini-2.5-flash"
+# ABBR="gemini"
+# MODEL_NAME="deepseek/deepseek-v3.2"
+# ABBR="ds"
+MODEL_NAME="meta-llama/llama-3.3-70b-instruct"
+ABBR="llama"
+# MODEL_NAME="qwen/qwen3-235b-a22b"
+# ABBR="qwen"
+
 ATTACK_TYPE="completion_real"
 METHOD_NAME="zombie"
 DATASET_NAME_OR_PATH="data-for-agents/insta-150k-v1"
 
-TRIGGER_ROUNDS=20
-TRIGGER_RUNS=3
+TRIGGER_ROUNDS=1
+TRIGGER_RUNS=50
 WINDOW_SIZE=50
 MAX_STEPS=15
 MOCK_TOPIC=1

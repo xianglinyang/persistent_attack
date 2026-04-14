@@ -1,30 +1,57 @@
 #!/bin/bash
-# Build ChromaDB corpus for RAG Memory (Three-collection design)
-# Collections: base (preloaded), exposure (learned), trigger (attack)
+# Build ChromaDB base corpus for all 5 models (MS MARCO passages)
+#
+# Each model gets its own DB directory:
+#   /data2/xianglin/zombie_agent/${ABBR}_zombie_completion_real_db/msmarco
+#
+# build_chroma_corpus.py appends the preset name ("msmarco") to --db_path,
+# so pass the parent dir (without /msmarco).
+#
+# Run once before rag_exposure.sh. Only the 'base' collection is populated here;
+# 'exposure' and 'trigger' are written during rag_exposure.sh / rag_trigger.sh.
 
+METHOD_NAME="zombie"
+ATTACK_TYPE="completion_real"
+PRESET="msmarco"
+LIMIT=3000
+EMBEDDING_MODEL="all-MiniLM-L6-v2"
+BASE_DIR="/data2/xianglin/zombie_agent"
 
+declare -A MODELS
+MODELS["glm"]="z-ai/glm-4.7-flash"
+MODELS["gemini"]="google/gemini-2.5-flash"
+MODELS["ds"]="deepseek/deepseek-v3.2"
+MODELS["llama"]="meta-llama/llama-3.3-70b-instruct"
+MODELS["qwen"]="qwen/qwen3-235b-a22b"
 
-# Model -> evolve mode -> (Baseline, ipi, zombie, dpi) -> attack type -> instruction guard
-# model_raw_ipi_ignore_sandwich
+ABBR_ORDER=("glm" "gemini" "ds" "llama" "qwen")
 
-# MS MARCO passages (recommended for general QA)
-python src/evaluate/rag/build_chroma_corpus.py \
-    --db_path /data2/xianglin/zombie_agent/glm_raw_zombie_spotlight_db --preset msmarco \
-    --limit 3000 \
-    --reset \
-    --embedding_model all-MiniLM-L6-v2 \
+TOTAL=${#ABBR_ORDER[@]}
+IDX=1
 
-# BeIR dataset (e.g., nfcorpus, scifact, trec-covid)
-# python src/evaluate/rag/build_chroma_corpus.py --preset beir --beir_name nfcorpus --limit 10000
+for ABBR in "${ABBR_ORDER[@]}"; do
+    DB_PATH="${BASE_DIR}/${ABBR}_${METHOD_NAME}_${ATTACK_TYPE}_db"
+    echo ""
+    echo "========== [${IDX}/${TOTAL}] Building base corpus for ${ABBR} =========="
+    echo "  DB path  : ${DB_PATH}/${PRESET}"
+    echo "  Limit    : ${LIMIT}"
+    echo ""
 
-# CC News (news articles)
-# python src/evaluate/rag/build_chroma_corpus.py --preset cc_news --limit 20000
+    python src/evaluate/rag/build_chroma_corpus.py \
+        --db_path "$DB_PATH" \
+        --preset $PRESET \
+        --limit $LIMIT \
+        --embedding_model $EMBEDDING_MODEL \
+        --reset
 
-# Mind2Web (web pages HTML)
-# python src/evaluate/rag/build_chroma_corpus.py --preset mind2web --limit 5000
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] Failed to build corpus for ${ABBR}. Aborting."
+        exit 1
+    fi
 
-# With streaming mode (for large datasets)
-# python src/evaluate/rag/build_chroma_corpus.py --preset msmarco --streaming --limit 100000
+    echo "  Done: ${ABBR}"
+    IDX=$((IDX + 1))
+done
 
-# Reset existing database (WARNING: deletes all collections!)
-# python src/evaluate/rag/build_chroma_corpus.py --preset msmarco --limit 50000 --reset
+echo ""
+echo "========== All ${TOTAL} base corpora built successfully =========="

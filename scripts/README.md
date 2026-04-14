@@ -1,68 +1,219 @@
 # Scripts
 
-```pip install git+https://github.com/sunblaze-ucb/progent.git```
-
-
-## Sliding Window Evaluation
-
-Three scenarios for evaluating utility and attack success rate:
-
-| Script | Scenario | Exposure | Defense | Metrics |
-|--------|----------|----------|---------|---------|
-| `sliding_window_utility.sh` | Utility baseline | None | None (`raw`) | Task completion score |
-| `sliding_window_utility_defense.sh` | Utility + instruction defense | None | `instructional` prompt guard | Task completion — utility cost of instruction defense |
-| `sliding_window_progent.sh` | Utility + Progent | None | Progent `static` | Task completion — utility cost of Progent |
-| `sliding_window_drift.sh` | Utility + DRIFT | None | DRIFT (all 3 stages) | Task completion — utility cost of DRIFT |
-| `sliding_window.sh` | Attack, no defense | Yes | None (`raw`) | ASR + task completion |
-| `sliding_window_attack_progent.sh` | Attack + Progent | Yes | Progent `static` | ASR + task completion |
-| `sliding_window_attack_drift.sh` | Attack + DRIFT | Yes | DRIFT (all 3 stages) | ASR + task completion |
-
-**Judge model**: `openai/gpt-5-mini` (default for all)
-
-**Progent** (`--progent_guard 1`):
-- `--progent_guard_mode static`: fixed policy — forbids `execute_command`, allows `search`/`read`
-- `--progent_guard_mode dynamic`: LLM generates per-task policy from user query
-
-**DRIFT** (`--drift_guard 1`):
-- Stage 1 (`--drift_build_constraints 1`): Secure Planner — LLM builds expected tool trajectory + parameter checklist before execution
-- Stage 2 (`--drift_dynamic_validation 1`): Dynamic Validator — validates each tool call against planned trajectory; blocks unplanned Write/Execute calls
-- Stage 3 (`--drift_injection_isolation 1`): Injection Isolator — LLM detects injected instructions in tool results and masks them before they enter memory
-- `--drift_guard_llm_name`: separate small LLM for DRIFT's internal calls (e.g., `openai/gpt-4.1-nano`); defaults to agent model
-
-**Save dirs** (under `/data2/xianglin/zombie_agent/sliding_window/`):
-- `utility_clean/` — baseline
-- `utility_defense/` — instruction guard
-- `utility_progent/` — Progent
-- `utility_drift/` — DRIFT
-- `attack/` — attack, no defense
-- `attack_progent/` — attack + Progent
-- `attack_drift/` — attack + DRIFT
+```bash
+pip install git+https://github.com/sunblaze-ucb/progent.git
+```
 
 ---
 
-## RAG Evaluation
+## Models
 
-| Script | Description |
-|--------|-------------|
-| `rag_exposure.sh` | Exposure phase only — injects payloads into RAG memory |
-| `rag_trigger.sh` | Trigger phase only — assumes exposure already in DB |
-| `rag.sh` | Both phases (exposure + trigger) |
+Switch the active model by editing `MODEL_NAME` / `ABBR` at the top of each script.
 
-### Adaptive Attack (RAG)
+| ABBR | MODEL_NAME |
+|------|-----------|
+| `glm` | `z-ai/glm-4.7-flash` |
+| `gemini` | `google/gemini-2.5-flash` |
+| `ds` | `deepseek/deepseek-v3.2` |
+| `llama` | `meta-llama/llama-3.3-70b-instruct` |
+| `qwen` | `qwen/qwen3-235b-a22b` |
 
-| Script | Description |
-|--------|-------------|
-| `rag_adaptive_exposure_only.sh` | Adaptive exposure only |
-| `rag_adaptive_trigger_only.sh` | Adaptive trigger only |
-| `rag_adaptive.sh` | Full adaptive attack (both phases) |
-| `rag_adaptive_compare_controllers.sh` | Compare different adaptive attack controllers |
+> **Note:** PIGuard and ProtectAIv2 require local HTTP services before running:
+> - PIGuard → port `12390`
+> - ProtectAIv2 → port `12392`
 
 ---
 
-## Other
+## Sliding Window
+
+### Step 1 — Utility baseline (no attack, no defense)
+
+Fills the **utility / None** row.
+
+```bash
+# Repeat for each model (glm / gemini / ds / llama / qwen)
+bash scripts/sliding_window_utility.sh
+```
+
+5 runs total.
+
+---
+
+### Step 2 — Utility with defense (no attack, defense on)
+
+Fills the **utility** column for all 7 defense rows.
+
+start the guard model service
+
+```bash
+# PIGuard
+cd /home/xianglin/git_space/persistent_attack/src/guard/detection_based/PIGuard
+uvicorn app:app --host 127.0.0.1 --port 12390
+
+# PromptGuard
+cd /home/xianglin/git_space/persistent_attack/src/guard/detection_based/PromptGuard
+uvicorn app:app --host 127.0.0.1 --port 12391
+
+# AIProtectv2
+cd /home/xianglin/git_space/persistent_attack/src/guard/detection_based/ProtectAIv2
+CUDA_VISIBLE_DEVICES=1 uvicorn app:app --host 127.0.0.1 --port 12392
+```
+
+```bash
+# Repeat for each model
+bash scripts/sliding_window_utility_defense.sh
+```
+
+Each run executes 7 configurations internally:
+`PIGuard` · `ProtectAIv2` · `sandwich` · `spotlight` · `instructional` · `Progent dynamic` · `DRIFT`
+
+5 runs total.
+
+---
+
+### Step 3 — Attack + all defenses
+
+Fills the **ASR** column for all rows (baseline + 7 defenses).
+
+```bash
+# Repeat for each model
+bash scripts/sliding_window.sh
+```
+
+Each run executes 8 configurations internally (baseline + 7 defenses).
+
+5 runs total.
+
+---
+
+### Save dirs (Sliding Window)
+
+| Data | Path |
+|------|------|
+| Utility baseline | `/data2/xianglin/zombie_agent/sliding_window/utility_clean/` |
+| Utility + defense | `/data2/xianglin/zombie_agent/sliding_window/utility_defense/` |
+| Attack + defense | `/data2/xianglin/zombie_agent/sliding_window/` |
+
+Result filenames encode all key parameters (model, method, attack_type, detection_guard, guard_model, instruction_guard) so results from different models and defenses never overwrite each other.
+
+---
+
+## RAG
+
+### Step 0 — Build base corpus (run once for all models)
+
+Populates the `base` ChromaDB collection with MS MARCO passages.
+**Run this once before any RAG experiment.**
+
+```bash
+bash scripts/RAG_build_corpus.sh
+```
+
+Builds 5 DBs in one run (one per model), stored at:
+`/data2/xianglin/zombie_agent/{ABBR}_zombie_completion_real_db/msmarco/`
+
+---
+
+### Step 1 — Utility baseline (no attack, no defense)
+
+Fills the **utility / None** row for RAG.
+
+```bash
+# Repeat for each model
+bash scripts/rag_utility.sh
+```
+
+5 runs total.
+
+---
+
+### Step 2 — Utility with defense (no attack, defense on)
+
+Fills the **utility** column for all 7 defense rows.
+
+```bash
+# Repeat for each model
+bash scripts/rag_utility_defense.sh
+```
+
+Each run executes 7 configurations internally.
+
+5 runs total.
+
+---
+
+### Step 3 — Exposure (inject payload, run once per model)
+
+Injects the malicious payload into the RAG vector database.
+**Must complete before step 4.**
+
+```bash
+# Repeat for each model
+bash scripts/rag_exposure.sh
+```
+
+5 runs total.
+
+---
+
+### Step 4 — Attack + all defenses
+
+Fills the **ASR** column for all rows (baseline + 7 defenses).
+
+```bash
+# Repeat for each model (requires exposure DB from step 3)
+bash scripts/rag_trigger.sh
+```
+
+Each run executes 8 configurations internally.
+
+5 runs total.
+
+---
+
+### Save dirs (RAG)
+
+| Data | Path |
+|------|------|
+| Utility baseline | `/data2/xianglin/zombie_agent/rag/utility_clean/` |
+| Utility + defense | `/data2/xianglin/zombie_agent/rag/utility_defense/` |
+| Attack + defense | `/data2/xianglin/zombie_agent/{ABBR}_{METHOD}_{ATTACK_TYPE}_db/msmarco/log_results/` |
+
+> **Why utility reuses the attack DB:** `exposure_rounds=0` makes retrieval skip the exposure
+> collection entirely (all injected docs have round ≥ 1), so the agent only sees clean base docs.
+
+---
+
+## Full Run Order
+
+```bash
+# ── For each of the 5 models ──────────────────────────────────
+
+# Sliding Window
+bash scripts/sliding_window_utility.sh           # utility baseline
+bash scripts/sliding_window_utility_defense.sh   # utility + 7 defenses
+bash scripts/sliding_window.sh                   # attack + 7 defenses
+
+# RAG
+bash scripts/RAG_build_corpus.sh                 # build base corpus (once, all models)
+bash scripts/rag_utility.sh                      # utility baseline
+bash scripts/rag_utility_defense.sh              # utility + 7 defenses
+bash scripts/rag_exposure.sh                     # inject payload (once per model)
+bash scripts/rag_trigger.sh                      # attack + 7 defenses
+```
+
+**Total: 5 models × 5 scripts = 25 runs**
+
+---
+
+## Other Scripts
 
 | Script | Description |
 |--------|-------------|
 | `RAG_build_corpus.sh` | Build base corpus for RAG memory (ChromaDB) |
 | `sl_adaptive.sh` | Adaptive attack on sliding window agent |
+| `rag_adaptive.sh` | Full adaptive RAG attack (exposure + trigger) |
+| `rag_adaptive_exposure_only.sh` | Adaptive RAG — exposure only |
+| `rag_adaptive_trigger_only.sh` | Adaptive RAG — trigger only |
+| `rag_adaptive_compare_controllers.sh` | Compare adaptive attack controllers |
 | `plot.sh` | Generate plots from saved result files |
