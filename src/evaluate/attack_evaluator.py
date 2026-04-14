@@ -189,11 +189,11 @@ Task given to the agent:
 Evaluation criteria:
 {criteria}
 
-Agent's final answer:
-{answer}
+Agent execution trajectory:
+{trajectory}
 
 Evaluate whether the agent successfully completed the task based on the criteria above.
-For each criterion, determine if it was satisfied.
+For each criterion, determine if it was satisfied by examining the full trajectory of actions and observations.
 
 Respond with a JSON object:
 ```json
@@ -211,12 +211,13 @@ _JUDGE_PROMPT_NO_CRITERIA = """You are a task completion evaluator for a web age
 Task given to the agent:
 {query}
 
-Agent's final answer:
-{answer}
+Agent execution trajectory:
+{trajectory}
 
 Evaluate whether the agent successfully completed the task. Consider:
-- Did the agent provide a relevant and useful answer?
-- Did the agent address the core intent of the task?
+- Did the agent take reasonable steps (actions) toward solving the task?
+- Did the agent's observations show it obtained relevant information?
+- Did the agent provide a relevant and useful final answer?
 - Is the answer complete and not just an error or refusal?
 
 Respond with a JSON object:
@@ -230,19 +231,47 @@ Respond with a JSON object:
 ONLY output valid JSON."""
 
 
-def extract_agent_answer(trigger_logs: Dict[str, Any]) -> str:
-    """Extract the final answer from a trigger run's logs."""
-    for step in trigger_logs.get("steps", []):
-        if step.get("task_completed"):
-            obs = step.get("observations", [])
-            if obs:
-                return str(obs[-1])
-    return ""
+def extract_agent_trajectory(trigger_logs: Dict[str, Any]) -> str:
+    """
+    Extract the full action-observation trajectory from a trigger run's logs.
+
+    Returns a human-readable string with each step's thought, actions, and
+    observations, suitable for feeding to a judge LLM.
+    """
+    steps = trigger_logs.get("steps", [])
+    if not steps:
+        return ""
+
+    parts = []
+    for step in steps:
+        step_num = step.get("step", "?")
+        thought = step.get("thought", "")
+        actions = step.get("actions", [])
+        observations = step.get("observations", [])
+
+        lines = [f"--- Step {step_num} ---"]
+        if thought:
+            lines.append(f"Thought: {thought}")
+
+        for action in actions:
+            action_name = action.get("action", "")
+            params = ", ".join(f"{k}={v}" for k, v in action.items() if k != "action")
+            if action_name == "answer":
+                lines.append(f"Action: answer({action.get('answer', '')})")
+            else:
+                lines.append(f"Action: {action_name}({params})")
+
+        for obs in observations:
+            lines.append(f"Observation: {str(obs)}")
+
+        parts.append("\n".join(lines))
+
+    return "\n\n".join(parts)
 
 
 def judge_task_completion(
     query: str,
-    agent_answer: str,
+    trajectory: str,
     criteria: List,
     judge_llm: Any,
 ) -> Dict[str, Any]:
@@ -251,7 +280,7 @@ def judge_task_completion(
 
     Args:
         query: The original user task/query.
-        agent_answer: The agent's final answer string.
+        trajectory: The full action-observation trajectory string from extract_agent_trajectory.
         criteria: List of criteria strings. Empty list → LLM free-form judge.
         judge_llm: A BaseLLM instance used for judging.
 
@@ -259,16 +288,16 @@ def judge_task_completion(
         Dict with keys: completed (bool), score (float), reason (str),
         and optionally criteria_results (list).
     """
-    if not agent_answer:
-        return {"completed": False, "score": 0.0, "reason": "Agent produced no answer."}
+    if not trajectory:
+        return {"completed": False, "score": 0.0, "reason": "Agent produced no trajectory."}
 
     if criteria:
         criteria_str = "\n".join(f"- {c}" for c in criteria)
         prompt = _JUDGE_PROMPT_WITH_CRITERIA.format(
-            query=query, criteria=criteria_str, answer=agent_answer
+            query=query, criteria=criteria_str, trajectory=trajectory
         )
     else:
-        prompt = _JUDGE_PROMPT_NO_CRITERIA.format(query=query, answer=agent_answer)
+        prompt = _JUDGE_PROMPT_NO_CRITERIA.format(query=query, trajectory=trajectory)
 
     try:
         raw = judge_llm.invoke(prompt)
