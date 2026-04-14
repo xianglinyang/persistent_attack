@@ -76,7 +76,7 @@ def generate_ipi_injections(attack_type: str):
 
 
 def generate_zombie_injections(attack_type: str):
-    attack_ins = create_attack_instance(attack_type, injected_prompt=BASIC_COMMAND1)
+    attack_ins = create_attack_instance(attack_type, injected_prompt=BASIC_COMMAND2)
     injected_prompt = attack_ins._get_completion_suffix()
     return injected_prompt
 
