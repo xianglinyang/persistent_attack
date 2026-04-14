@@ -9,13 +9,22 @@ from src.guard.detection_based.PromptGuard.call import PromptGuardClient
 from src.guard.detection_based.ProtectAIv2.call import ProtectAIv2Client
 from src.guard.detection_based.LLMGuard.guard_wrapper import LLMGuardClient
 
+_GUARD_PORTS = {
+    "PIGuard":     12390,
+    "PromptGuard": 12391,
+    "ProtectAIv2": 12392,
+}
+
 def detect_attack(text: str, model_implementation_name: str) -> dict:
     if model_implementation_name == "PIGuard":
-        guard = PIGuardClient("http://localhost:12390")
+        port = _GUARD_PORTS["PIGuard"]
+        guard = PIGuardClient(f"http://localhost:{port}")
     elif model_implementation_name == "PromptGuard":
-        guard = PromptGuardClient("http://localhost:12390")
+        port = _GUARD_PORTS["PromptGuard"]
+        guard = PromptGuardClient(f"http://localhost:{port}")
     elif model_implementation_name == "ProtectAIv2":
-        guard = ProtectAIv2Client("http://localhost:12390")
+        port = _GUARD_PORTS["ProtectAIv2"]
+        guard = ProtectAIv2Client(f"http://localhost:{port}")
     else:
         guard = LLMGuardClient(implementation_name=model_implementation_name)
     
