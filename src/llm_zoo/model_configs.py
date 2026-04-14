@@ -50,6 +50,72 @@ QWEN_PAD_TOKEN = "<|endoftext|>"
 QWEN_FORMATTED_PROMPT = "<|im_start|>user\n{prompt}<|im_end|>\n"
 
 
+# ---------------------------------------------------------------------------
+# Model context-length registry
+# Keys are lowercase substrings matched against model_name.lower().
+# Listed from most-specific to least-specific so the first match wins.
+# ---------------------------------------------------------------------------
+_MODEL_CONTEXT_LENGTHS = [
+    # OpenAI
+    ("gpt-4.1",              1047576),
+    ("gpt-4o",               128000),
+    ("gpt-4-turbo",          128000),
+    ("gpt-4",                8192),
+    ("gpt-3.5-turbo-16k",    16384),
+    ("gpt-3.5",              4096),
+    ("o1",                   200000),
+    ("o3",                   200000),
+    # Anthropic / Claude
+    ("claude",               200000),
+    # Google Gemini
+    ("gemini-2.5",           1048576),
+    ("gemini-2.0",           1048576),
+    ("gemini-1.5",           1048576),
+    ("gemini-1.0",           32768),
+    # Meta Llama
+    ("llama-3.3-70b",        131072),
+    ("llama-3.1-405b",       131072),
+    ("llama-3.1-70b",        131072),
+    ("llama-3.1-8b",         131072),
+    ("llama-3",              131072),
+    ("llama-2",              4096),
+    # Mistral
+    ("mistral-large",        131072),
+    ("mistral-small",        131072),
+    ("mixtral-8x22b",        65536),
+    ("mixtral",              32768),
+    ("mistral-7b",           32768),
+    # Qwen
+    ("qwen2.5-72b",          131072),
+    ("qwen2.5",              131072),
+    ("qwen2-72b",            131072),
+    ("qwen2",                131072),
+    ("qwen3",                131072),
+    ("qwen",                 32768),
+    # DeepSeek
+    ("deepseek-r1",          65536),
+    ("deepseek",             65536),
+    # GLM
+    ("glm-4",                131072),
+    ("glm",                  32768),
+]
+
+_DEFAULT_CONTEXT_LENGTH = 32768  # safe fallback for unknown models
+
+
+def get_context_length(model_name: str) -> int:
+    """Return the context-window size (in tokens) for the given model name."""
+    name_lower = model_name.lower()
+    for pattern, length in _MODEL_CONTEXT_LENGTHS:
+        if pattern in name_lower:
+            return length
+    logger.warning(
+        f"[model_configs] Unknown model '{model_name}'; "
+        f"defaulting to context length {_DEFAULT_CONTEXT_LENGTH}."
+    )
+    return _DEFAULT_CONTEXT_LENGTH
+
+
 def get_stop_tokens(model_name_or_path):
     model_name_lower = model_name_or_path.lower()
     if "llama-3" in model_name_lower or "llama3" in model_name_lower:
