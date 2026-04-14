@@ -6,13 +6,17 @@ on tool calls at runtime, blocking tool invocations that violate the policy.
 
 Two modes:
   - "static": uses a fixed policy (forbids execute_command, allows search/read)
-  - "dynamic": generates a per-task policy from the user query using an LLM
+  - "dynamic": generates a per-task policy from the user query via OpenRouter.
+               Uses dynamic_policy.py (adapted from secagent) so the model is
+               fully configurable without patching the secagent library.
 
 Install: pip install git+https://github.com/sunblaze-ucb/progent.git
 """
 
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
+
+from src.guard.system_level.progent.dynamic_policy import generate_and_apply_dynamic_policy
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +61,15 @@ class ProgentGuard:
     Wraps Progent's policy enforcement for use in our agent.
 
     Args:
-        mode: "static" for fixed policy, "dynamic" for LLM-generated per-task policy.
+        mode:       "static" for fixed policy, "dynamic" for LLM-generated per-task policy.
+        model_name: OpenRouter model used in dynamic mode (e.g. "openai/gpt-4o").
+                    Ignored in static mode.
     """
 
-    def __init__(self, mode: str = "static"):
+    def __init__(self, mode: str = "static", model_name: Optional[str] = None):
         assert mode in ("static", "dynamic"), f"Invalid progent mode: {mode}"
         self.mode = mode
+        self.model_name = model_name or "openai/gpt-4o"
         self._initialized = False
         self._load_secagent()
 
@@ -109,12 +116,24 @@ class ProgentGuard:
             self._update_security_policy(STATIC_POLICY)
             logger.info("[ProgentGuard] Static policy applied.")
         elif self.mode == "dynamic":
-            logger.info(f"[ProgentGuard] Generating dynamic policy for query: {user_query[:80]}...")
+            logger.info(
+                f"[ProgentGuard] Generating dynamic policy via {self.model_name} "
+                f"for query: {user_query[:80]}..."
+            )
             try:
-                self._generate_security_policy(user_query, manual_check=False)
-                logger.info("[ProgentGuard] Dynamic policy generated.")
+                generate_and_apply_dynamic_policy(
+                    user_query=user_query,
+                    tool_definitions=TOOL_DEFINITIONS,
+                    model_name=self.model_name,
+                    update_security_policy_fn=self._update_security_policy,
+                    reset_security_policy_fn=self._reset_security_policy,
+                )
+                logger.info("[ProgentGuard] Dynamic policy applied.")
             except Exception as e:
-                logger.warning(f"[ProgentGuard] Dynamic policy generation failed: {e}. Falling back to static.")
+                logger.warning(
+                    f"[ProgentGuard] Dynamic policy generation failed: {e}. Falling back to static."
+                )
+                self._reset_security_policy()
                 self._update_security_policy(STATIC_POLICY)
 
     def check(self, tool_name: str, action: dict) -> Tuple[bool, str]:
