@@ -66,7 +66,7 @@ from src.tools.mock_malicious_website import prepare_malicious_payload
 from src.utils.logging_utils import setup_logging
 
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
-from src.evaluate.attack_evaluator import extract_agent_answer, judge_task_completion
+from src.evaluate.attack_evaluator import extract_agent_trajectory, judge_task_completion
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
 from src.config import set_payload_dir, set_mock_topic, get_config_summary
 
@@ -153,10 +153,10 @@ def trigger_SL(agent, trigger_queries, criterias=None, judge_llm=None):
         # Task completion judging
         if judge_llm is not None:
             criteria = criterias[i] if criterias and i < len(criterias) else []
-            agent_answer = extract_agent_answer(trigger_logs)
+            trajectory = extract_agent_trajectory(trigger_logs)
             completion = judge_task_completion(
                 query=trigger_queries[i],
-                agent_answer=agent_answer,
+                trajectory=trajectory,
                 criteria=criteria,
                 judge_llm=judge_llm,
             )
@@ -189,6 +189,7 @@ def main_sliding_window_agent_attack(
     instruction_guard_name: str = "raw",
     progent_guard: bool = False,
     progent_guard_mode: str = "static",
+    progent_model_name: str = None,
     drift_guard: bool = False,
     drift_guard_llm_name: str = None,
     drift_build_constraints: bool = True,
@@ -228,15 +229,14 @@ def main_sliding_window_agent_attack(
     logger.info(f"Progent guard Enabled: {progent_guard}")
     if progent_guard:
         logger.info(f"Progent guard mode: {progent_guard_mode}")
+        if progent_guard_mode == "dynamic":
+            logger.info(f"Progent policy model: {progent_model_name}")
     logger.info(f"DRIFT guard Enabled: {drift_guard}")
     if drift_guard:
         logger.info(f"DRIFT LLM: {drift_guard_llm_name or 'same as agent'}")
         logger.info(f"DRIFT stages: constraints={drift_build_constraints}, validation={drift_dynamic_validation}, isolation={drift_injection_isolation}")
     logger.info(f"Judge Model: {judge_model_name if judge_model_name else 'disabled'}")
     
-    # Set global payload directory for this experiment
-    set_payload_dir(payload_dir)
-    logger.info(f"Payload Directory: {payload_dir if payload_dir else 'default (src/tools/payloads)'}")
     logger.info(f"{'='*80}\n")
     
     # 0. Construct Queries + Setup Malicious Payload
@@ -276,6 +276,7 @@ def main_sliding_window_agent_attack(
         instruction_guard_name=instruction_guard_name,
         progent_guard=progent_guard,
         progent_guard_mode=progent_guard_mode,
+        progent_model_name=progent_model_name,
         drift_guard=drift_guard,
         drift_guard_llm_name=drift_guard_llm_name,
         drift_build_constraints=drift_build_constraints,
@@ -305,6 +306,7 @@ def main_sliding_window_agent_attack(
             instruction_guard_name=instruction_guard_name,
             progent_guard=progent_guard,
             progent_guard_mode=progent_guard_mode,
+            progent_model_name=progent_model_name,
             drift_guard=drift_guard,
             drift_guard_llm_name=drift_guard_llm_name,
             drift_build_constraints=drift_build_constraints,
@@ -337,7 +339,12 @@ def main_sliding_window_agent_attack(
         logger.info(f"  ASR Rate: {len(asr_results)}/{len(all_results_flat)} ({len(asr_results)/len(all_results_flat):.2%})")
 
     os.makedirs(save_dir, exist_ok=True)
-    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_") + f"_{detection_guard}" + "_" + detection_guard_model_name.replace("/", "_") + f"_{instruction_guard_name}"
+    _guard_suffix = ""
+    if progent_guard:
+        _guard_suffix = "_progent_" + (progent_model_name or "default").replace("/", "_")
+    elif drift_guard:
+        _guard_suffix = "_drift_" + (drift_guard_llm_name or "default").replace("/", "_")
+    save_name = model_name.replace("/", "_") + f"_{method_name}" + f"_{attack_type}" + "_" + dataset_name_or_path.replace("/", "_") + f"_{detection_guard}" + "_" + detection_guard_model_name.replace("/", "_") + f"_{instruction_guard_name}" + _guard_suffix
     save_exposure_metrics(exposure_metrics, exposure_logs, os.path.join(save_dir, f"metrics_exposure_{save_name}.json"))
     save_trigger_metrics(all_trigger_metrics, all_trigger_logs, os.path.join(save_dir, f"metrics_trigger_{save_name}.json"))
 
@@ -369,6 +376,7 @@ if __name__ == "__main__":
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
     parser.add_argument("--progent_guard", type=int, default=0, help="Enable Progent tool-level privilege control (0/1)")
     parser.add_argument("--progent_guard_mode", type=str, default="static", choices=["static", "dynamic"], help="Progent policy mode: static (fixed) or dynamic (LLM-generated per task)")
+    parser.add_argument("--progent_model_name", type=str, default="openai/gpt-4o", help="OpenRouter model for Progent dynamic policy generation (only used when progent_guard_mode=dynamic)")
     parser.add_argument("--drift_guard", type=int, default=0, help="Enable DRIFT defense (0/1)")
     parser.add_argument("--drift_guard_llm_name", type=str, default=None, help="LLM for DRIFT (planner/validator/isolator). Defaults to agent model if not set.")
     parser.add_argument("--drift_build_constraints", type=int, default=1, help="DRIFT Stage 1: Secure Planner (0/1)")
@@ -412,6 +420,7 @@ if __name__ == "__main__":
         instruction_guard_name=args.instruction_guard_name,
         progent_guard=args.progent_guard,
         progent_guard_mode=args.progent_guard_mode,
+        progent_model_name=args.progent_model_name,
         drift_guard=args.drift_guard,
         drift_guard_llm_name=args.drift_guard_llm_name,
         drift_build_constraints=bool(args.drift_build_constraints),

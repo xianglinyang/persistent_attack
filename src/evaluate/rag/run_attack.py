@@ -50,7 +50,7 @@ from src.evaluate.query_constructor import (
 from src.tools.mock_malicious_website import prepare_malicious_payload
 from src.utils.logging_utils import setup_logging
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
-from src.evaluate.attack_evaluator import extract_agent_answer, judge_task_completion
+from src.evaluate.attack_evaluator import extract_agent_trajectory, judge_task_completion
 from src.analysis.rag_plots import (
     plot_exposure_metrics,
     plot_trigger_metrics,
@@ -199,10 +199,10 @@ def trigger_RAG(
         # Task completion judging
         if judge_llm is not None:
             criteria = criterias[i - 1] if criterias and i - 1 < len(criterias) else []
-            agent_answer = extract_agent_answer(trigger_logs)
+            trajectory = extract_agent_trajectory(trigger_logs)
             completion = judge_task_completion(
                 query=trigger_query,
-                agent_answer=agent_answer,
+                trajectory=trajectory,
                 criteria=criteria,
                 judge_llm=judge_llm,
             )
@@ -327,6 +327,16 @@ def main_rag_agent_exposure_experiment(
     detection_guard_model_name: Optional[str] = None,
     # instruction guard knobs
     instruction_guard_name: str = "raw",
+    # progent guard knobs
+    progent_guard: bool = False,
+    progent_guard_mode: str = "static",
+    progent_model_name: Optional[str] = None,
+    # drift guard knobs
+    drift_guard: bool = False,
+    drift_guard_llm_name: Optional[str] = None,
+    drift_build_constraints: bool = True,
+    drift_dynamic_validation: bool = True,
+    drift_injection_isolation: bool = True,
 ) -> Dict[str, Any]:
     """
     Experiment harness with:
@@ -446,7 +456,15 @@ def main_rag_agent_exposure_experiment(
     logger.info(f"Start time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 80 + "\n")
 
-    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, detection_guard=detection_guard, detection_guard_model_name=detection_guard_model_name, instruction_guard_name=instruction_guard_name)
+    agent = RAGWebAgent(
+        llm=llm, memory=memory, max_steps=max_steps,
+        detection_guard=detection_guard, detection_guard_model_name=detection_guard_model_name,
+        instruction_guard_name=instruction_guard_name,
+        progent_guard=progent_guard, progent_guard_mode=progent_guard_mode, progent_model_name=progent_model_name,
+        drift_guard=drift_guard, drift_guard_llm_name=drift_guard_llm_name,
+        drift_build_constraints=drift_build_constraints, drift_dynamic_validation=drift_dynamic_validation,
+        drift_injection_isolation=drift_injection_isolation,
+    )
 
     # Use the exposure_RAG function
     agent, exposure_metrics, all_exposure_logs = exposure_RAG(
@@ -498,6 +516,14 @@ def main_rag_agent_trigger_experiment(
     detection_guard: bool = False,
     detection_guard_model_name: Optional[str] = None,
     instruction_guard_name: str = "raw",
+    progent_guard: bool = False,
+    progent_guard_mode: str = "static",
+    progent_model_name: Optional[str] = None,
+    drift_guard: bool = False,
+    drift_guard_llm_name: Optional[str] = None,
+    drift_build_constraints: bool = True,
+    drift_dynamic_validation: bool = True,
+    drift_injection_isolation: bool = True,
     # judge knobs
     judge_model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -550,7 +576,15 @@ def main_rag_agent_trigger_experiment(
     )
 
     llm = load_model(model_name)
-    agent = RAGWebAgent(llm=llm, memory=memory, max_steps=max_steps, detection_guard=detection_guard, detection_guard_model_name=detection_guard_model_name, instruction_guard_name=instruction_guard_name)
+    agent = RAGWebAgent(
+        llm=llm, memory=memory, max_steps=max_steps,
+        detection_guard=detection_guard, detection_guard_model_name=detection_guard_model_name,
+        instruction_guard_name=instruction_guard_name,
+        progent_guard=progent_guard, progent_guard_mode=progent_guard_mode, progent_model_name=progent_model_name,
+        drift_guard=drift_guard, drift_guard_llm_name=drift_guard_llm_name,
+        drift_build_constraints=drift_build_constraints, drift_dynamic_validation=drift_dynamic_validation,
+        drift_injection_isolation=drift_injection_isolation,
+    )
 
     trigger_metrics: List[Dict[str, Any]] = []
     all_trigger_logs: List[Dict[str, Any]] = []
@@ -625,11 +659,19 @@ def main():
                        help="Number of independent trigger runs")
     
     # Safety and guard settings
-    parser.add_argument("--allow_command_patterns", type=List[str], default=None)
+    parser.add_argument("--allow_command_patterns", type=str, nargs="+", default=None)
     parser.add_argument("--strict_cmd_asr", type=int, default=0)
     parser.add_argument("--detection_guard", type=int, default=0)
     parser.add_argument("--detection_guard_model_name", type=str, default=None)
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
+    parser.add_argument("--progent_guard", type=int, default=0)
+    parser.add_argument("--progent_guard_mode", type=str, default="static", choices=["static", "dynamic"])
+    parser.add_argument("--progent_model_name", type=str, default="openai/gpt-5-mini")
+    parser.add_argument("--drift_guard", type=int, default=0)
+    parser.add_argument("--drift_guard_llm_name", type=str, default=None)
+    parser.add_argument("--drift_build_constraints", type=int, default=1)
+    parser.add_argument("--drift_dynamic_validation", type=int, default=1)
+    parser.add_argument("--drift_injection_isolation", type=int, default=1)
     
     # Payload directory
     parser.add_argument("--payload_dir", type=str, default=None, help="Custom payload directory path")
@@ -701,8 +743,16 @@ def main():
             detection_guard=bool(args.detection_guard),
             detection_guard_model_name=args.detection_guard_model_name,
             instruction_guard_name=args.instruction_guard_name,
+            progent_guard=bool(args.progent_guard),
+            progent_guard_mode=args.progent_guard_mode,
+            progent_model_name=args.progent_model_name,
+            drift_guard=bool(args.drift_guard),
+            drift_guard_llm_name=args.drift_guard_llm_name,
+            drift_build_constraints=bool(args.drift_build_constraints),
+            drift_dynamic_validation=bool(args.drift_dynamic_validation),
+            drift_injection_isolation=bool(args.drift_injection_isolation),
         )
-        
+
         logger.info(f"\n✅ Exposure phase complete!")
         if exposure_metrics:
             logger.info(f"   Processed {len(exposure_metrics)} rounds")
@@ -745,6 +795,14 @@ def main():
             detection_guard=bool(args.detection_guard),
             detection_guard_model_name=args.detection_guard_model_name,
             instruction_guard_name=args.instruction_guard_name,
+            progent_guard=bool(args.progent_guard),
+            progent_guard_mode=args.progent_guard_mode,
+            progent_model_name=args.progent_model_name,
+            drift_guard=bool(args.drift_guard),
+            drift_guard_llm_name=args.drift_guard_llm_name,
+            drift_build_constraints=bool(args.drift_build_constraints),
+            drift_dynamic_validation=bool(args.drift_dynamic_validation),
+            drift_injection_isolation=bool(args.drift_injection_isolation),
             judge_model_name=args.judge_model_name,
         )
         
@@ -759,7 +817,12 @@ def main():
     logger.info("="*80)
     
     os.makedirs(args.save_dir, exist_ok=True)
-    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}" + "_" + args.dataset_name_or_path.replace("/", "_") + f"_{args.detection_guard}" + "_" + args.detection_guard_model_name.replace("/", "_") + f"_{args.instruction_guard_name}"
+    _guard_suffix = ""
+    if args.progent_guard:
+        _guard_suffix = "_progent_" + (args.progent_model_name or "default").replace("/", "_")
+    elif args.drift_guard:
+        _guard_suffix = "_drift_" + (args.drift_guard_llm_name or "default").replace("/", "_")
+    model_nick_name = args.model_name.replace("/", "_") + f"_{args.method_name}" + f"_{args.attack_type}" + "_" + args.dataset_name_or_path.replace("/", "_") + f"_{args.detection_guard}" + "_" + args.detection_guard_model_name.replace("/", "_") + f"_{args.instruction_guard_name}" + _guard_suffix
     if args.phase == "exposure":
         save_exposure_metrics(exposure_metrics, all_exposure_logs, os.path.join(args.save_dir, f"metrics_exposure_{model_nick_name}.json"))
         plot_exposure_metrics(exposure_metrics, os.path.join(args.save_dir, f"exposure_{model_nick_name}.png"))
