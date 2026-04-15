@@ -189,13 +189,16 @@ class OpenRouterModel(BaseLLM):
                     n=1,
                 )
 
+                if not response.choices:
+                    raise ValueError(f"OpenRouter returned empty choices for model {self.model_name} (response: {response})")
+
                 if return_cost:
-                
+
                     # Calculate costs
                     input_tokens = response.usage.prompt_tokens
                     output_tokens = response.usage.completion_tokens
                     cost = calculate_cost(self.model_name, input_tokens, output_tokens)
-                    
+
                     return CallResult(
                         response=response.choices[0].message.content.strip(),
                         input_tokens=input_tokens,
@@ -230,12 +233,14 @@ class OpenRouterModel(BaseLLM):
                     messages=messages,
                     **self.model_kwargs
                 )
+                if not response.choices:
+                    raise ValueError(f"OpenRouter returned empty choices for model {self.model_name} (response: {response})")
                 if return_cost:
                     # Calculate costs
                     input_tokens = response.usage.prompt_tokens
                     output_tokens = response.usage.completion_tokens
                     cost = calculate_cost(self.model_name, input_tokens, output_tokens)
-                    
+
                     return CallResult(
                         response=response.choices[0].message.content,
                         input_tokens=input_tokens,
@@ -269,26 +274,29 @@ class OpenRouterModel(BaseLLM):
         """
         max_retries = 3
         retry_delay = 2.0
-        
+
         for attempt in range(max_retries):
             try:
                 messages = []
                 if system_prompt:
                     messages.append({"role": "system", "content": system_prompt})
                 messages.append({"role": "user", "content": prompt_content})
-                
+
                 response = await self.async_client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
                     n=1,
                 )
-                
+
+                if not response.choices:
+                    raise ValueError(f"OpenRouter returned empty choices for model {self.model_name} (response: {response})")
+
                 if return_cost:
                     # Calculate costs
                     input_tokens = response.usage.prompt_tokens
                     output_tokens = response.usage.completion_tokens
                     cost = calculate_cost(self.model_name, input_tokens, output_tokens)
-                    
+
                     return CallResult(
                         response=response.choices[0].message.content,
                         input_tokens=input_tokens,
