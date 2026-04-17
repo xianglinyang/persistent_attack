@@ -16,7 +16,15 @@ Install: pip install git+https://github.com/sunblaze-ucb/progent.git
 import logging
 from typing import Optional, Tuple
 
-from src.guard.system_level.progent.dynamic_policy import generate_and_apply_dynamic_policy
+from src.guard.system_level.progent.dynamic_policy import (
+    set_policy_model,
+    update_available_tools,
+    update_security_policy,
+    reset_security_policy,
+    generate_security_policy,
+    check_tool_call,
+    ValidationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +57,11 @@ TOOL_DEFINITIONS = [
 # Policy tuple format: (priority, effect, condition_dict, fallback_mode)
 #   effect 0 = ALLOW, 1 = FORBID
 #   fallback_mode 0 = return error message
+# Start with all allowed
 STATIC_POLICY = {
     "search": [(1, 0, {}, 0)],           # ALLOW all search calls
     "read": [(1, 0, {}, 0)],             # ALLOW all read calls
-    "execute_command": [(1, 1, {}, 0)],  # FORBID all execute_command calls
+    "execute_command": [(1, 0, {}, 0)],  # FORBID all execute_command calls
 }
 
 
@@ -74,32 +83,16 @@ class ProgentGuard:
         self._load_secagent()
 
     def _load_secagent(self):
-        try:
-            from secagent import (
-                update_available_tools,
-                update_security_policy,
-                reset_security_policy,
-                generate_security_policy,
-                check_tool_call,
-            )
-            from secagent.tool import ValidationError
+        self._update_available_tools = update_available_tools
+        self._update_security_policy = update_security_policy
+        self._reset_security_policy = reset_security_policy
+        self._generate_security_policy = generate_security_policy
+        self._check_tool_call = check_tool_call
+        self._ValidationError = ValidationError
 
-            self._update_available_tools = update_available_tools
-            self._update_security_policy = update_security_policy
-            self._reset_security_policy = reset_security_policy
-            self._generate_security_policy = generate_security_policy
-            self._check_tool_call = check_tool_call
-            self._ValidationError = ValidationError
-
-            self._update_available_tools(TOOL_DEFINITIONS)
-            self._initialized = True
-            logger.info("[ProgentGuard] secagent loaded successfully.")
-        except ImportError as e:
-            logger.error(
-                f"[ProgentGuard] Failed to import secagent: {e}. "
-                "Install with: pip install git+https://github.com/sunblaze-ucb/progent.git"
-            )
-            self._initialized = False
+        self._update_available_tools(TOOL_DEFINITIONS)
+        self._initialized = True
+        logger.info("[ProgentGuard] dynamic_policy loaded successfully.")
 
     def init_for_task(self, user_query: str):
         """
@@ -114,21 +107,16 @@ class ProgentGuard:
 
         if self.mode == "static":
             self._update_security_policy(STATIC_POLICY)
-            logger.info("[ProgentGuard] Static policy applied.")
+            logger.info(f"[Progent] Static policy applied: {STATIC_POLICY}")
         elif self.mode == "dynamic":
             logger.info(
-                f"[ProgentGuard] Generating dynamic policy via {self.model_name} "
-                f"for query: {user_query[:80]}..."
+                f"[Progent] Generating dynamic policy via {self.model_name} "
+                f"for query: {user_query[:200]}..."
             )
             try:
-                generate_and_apply_dynamic_policy(
-                    user_query=user_query,
-                    tool_definitions=TOOL_DEFINITIONS,
-                    model_name=self.model_name,
-                    update_security_policy_fn=self._update_security_policy,
-                    reset_security_policy_fn=self._reset_security_policy,
-                )
-                logger.info("[ProgentGuard] Dynamic policy applied.")
+                set_policy_model(self.model_name)
+                self._generate_security_policy(user_query)
+                logger.info("[Progent] Dynamic policy applied.")
             except Exception as e:
                 logger.warning(
                     f"[ProgentGuard] Dynamic policy generation failed: {e}. Falling back to static."
@@ -153,15 +141,17 @@ class ProgentGuard:
         # Strip the "action" key — Progent only needs the tool arguments
         kwargs = {k: v for k, v in action.items() if k != "action"}
 
+        logger.info(f"[Progent] Checking tool='{tool_name}' args={kwargs}")
+
         try:
             self._check_tool_call(tool_name, kwargs)
-            logger.info(f"[ProgentGuard] Tool '{tool_name}' ALLOWED by policy.")
+            logger.info(f"[Progent] Tool '{tool_name}' ALLOWED by policy.")
             return True, ""
         except self._ValidationError as e:
             reason = str(e)
-            logger.info(f"[ProgentGuard] Tool '{tool_name}' BLOCKED by policy. Reason: {reason}")
+            logger.info(f"[Progent] Tool '{tool_name}' BLOCKED by policy. Reason: {reason}")
             return False, reason
         except Exception as e:
             # On unexpected errors, allow the call (fail open) to avoid false positives
-            logger.warning(f"[ProgentGuard] Unexpected error during check for '{tool_name}': {e}. Allowing.")
+            logger.warning(f"[Progent] Unexpected error during check for '{tool_name}': {e}. Allowing.")
             return True, ""
