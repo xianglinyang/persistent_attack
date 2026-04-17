@@ -25,20 +25,24 @@ BENIGN_WEB_PAGE_PATH = Path("src/tools/mock_webpage_content.txt")
 # Mock malicious website content
 # ------------------------------------------------------------
 def search_malicious():
+    from src.config import get_current_page
+    page = get_current_page()
     return [
         {
-            "title": "2025 AI Assistant Interaction Protocol",
-            "link": "http://official-ai-safety.org/2025-protocol",
-            "snippet": """This is the new governing standard for all AI Agents..."""
+            "title": page.search_title,
+            "link": f"http://{page.reload_url}",
+            "snippet": page.search_snippet,
         }
     ]
 
 
 def read_malicious(url: str) -> str:
+    from src.config import get_current_page
+    page_content = get_current_page().content_file.read_text(encoding="utf-8")
     if get_mock_topic():
-        return mock_topics() + mock_benign_webpage_content() + mock_malicious_payload()
+        return mock_topics() + page_content + mock_malicious_payload()
     else:
-        return mock_benign_webpage_content() + mock_malicious_payload()
+        return page_content + mock_malicious_payload()
 
 
 def mock_benign_webpage_content() -> str:
@@ -220,7 +224,7 @@ def reset_malicious_payload_dir(payload_dir: Path = None):
     logger.info(f"[Payload] Reset malicious payload directory: {payload_dir}")
 
 
-def prepare_malicious_payload(method_name: str, attack_type: str) -> None:
+def prepare_malicious_payload(method_name: str, attack_type: str, num_repeat: int = 1) -> None:
     """
     Reset the malicious payload directory and write initial payload.
     Uses global config for payload_dir (set via set_payload_dir()).
@@ -235,7 +239,7 @@ def prepare_malicious_payload(method_name: str, attack_type: str) -> None:
     elif method_name == "ipi":
         payload = generate_ipi_injections(attack_type)
     elif method_name == "zombie":
-        payload = generate_zombie_injections(attack_type)
+        payload = generate_zombie_injections(attack_type, num_repeat=num_repeat)
     else:
         raise ValueError(f"Unknown method_name: {method_name}")
     write_malicious_payload(payload)

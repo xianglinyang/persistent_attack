@@ -68,7 +68,7 @@ from src.utils.logging_utils import setup_logging
 from src.analysis.save_metrics import save_exposure_metrics, save_trigger_metrics
 from src.evaluate.attack_evaluator import extract_agent_trajectory, judge_task_completion
 from src.analysis.sliding_window_plots import plot_sliding_window_metrics_multi_runs
-from src.config import set_payload_dir, set_mock_topic, get_config_summary
+from src.config import set_payload_dir, set_mock_topic, set_page_type, get_config_summary, PAGES
 
 
 logger = logging.getLogger(__name__)
@@ -386,24 +386,30 @@ if __name__ == "__main__":
     parser.add_argument("--judge_model_name", type=str, default="openai/gpt-5-mini", help="LLM for task completion judging. Set to empty string to disable.")
     parser.add_argument("--payload_dir", type=str, default=None, help="Custom payload directory path")
     parser.add_argument("--mock_topic", type=int, help="Include mock_topics() in website content (default: True)")
+    parser.add_argument("--page_type", type=str, default="telemedicine", choices=list(PAGES.keys()),
+                        help="Attack page topic to use (default: telemedicine)")
+    parser.add_argument("--num_repeat", type=int, default=1, help="Number of times to repeat the zombie payload (default: 1)")
     args = parser.parse_args()
 
     setup_logging(task_name=f"sliding_window_attack_{args.model_name.replace('/', '_')}")
-    
+
+    # Set page type for this experiment (controls mock URL, page content, and ASR eval)
+    set_page_type(args.page_type)
+
     # Set global payload directory for this experiment
     if args.payload_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        payload_dir = f"src/tools/payloads/{args.method_name}_{args.attack_type}"
+        payload_dir = f"src/tools/payloads/{args.method_name}_{args.attack_type}_{args.page_type}"
     else:
         payload_dir = args.payload_dir
-    
+
     set_payload_dir(payload_dir)
     set_mock_topic(args.mock_topic)
     logger.info(f"[Experiment] Payload directory set to: {payload_dir}")
     logger.info(f"[Experiment] Mock topic (include mock_topics): {args.mock_topic}")
     
     # Prepare malicious payload (will use global payload_dir)
-    prepare_malicious_payload(args.method_name, args.attack_type)
+    prepare_malicious_payload(args.method_name, args.attack_type, num_repeat=args.num_repeat)
 
     main_sliding_window_agent_attack(
         model_name=args.model_name,
