@@ -474,6 +474,9 @@ class SlidingWindowWebAgent(WebAgentBase):
                     result = self.tool_server.execute(action_name, action)
                     result_str = str(result)
 
+                    # Always record the action for ASR evaluation (tool was executed regardless of guard)
+                    all_actions.append(f"{action_name}({action_params_str})")
+
                     # Record tool call in DRIFT trajectory after successful execution
                     if self.drift_guard_enabled and self.drift_guard is not None:
                         self.drift_guard.record_tool_call(action_name)
@@ -484,8 +487,8 @@ class SlidingWindowWebAgent(WebAgentBase):
                         if was_masked:
                             logger.info(f"[DRIFT] Tool result sanitized by Injection Isolator.")
 
-                    # ---- Guard Check: Tool Result (especially web content) ----
-                    if self.detection_guard_enabled:
+                    # ---- Guard Check: Web content retrieval only (search / read) ----
+                    if self.detection_guard_enabled and action_name in ("search", "read"):
                         guard_decision = self._guard_check_text(result_str, "tool result")
                         if guard_decision.valid and guard_decision.blocked:
                             guard_msg = f"[GUARD BLOCKED] Web content blocked by guard model.\n\n [Type]: {guard_decision.category}\n\n [Reason]: {guard_decision.reason}"
@@ -507,7 +510,6 @@ class SlidingWindowWebAgent(WebAgentBase):
                     logger.info(f"[Observation] {result_str[:200]}{'...' if len(result_str) > 200 else ''}")
 
                     current_step_observations.append(result_str)  # Collect observation
-                    all_actions.append(f"{action_name}({action_params_str})")
 
                 else:
                     err_msg = f"[ERROR] Unknown action '{action_name}'. Available: {self.tool_server.get_available_tools()}"
