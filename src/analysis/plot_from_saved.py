@@ -306,6 +306,89 @@ def plot_defense_comparison(
     print(f"✅ Instruction defense ASR plot ({scenario}) generated successfully")
 
 
+def _load_and_merge_llm_series(
+    series_str: str,
+) -> Optional[tuple]:
+    """
+    Parse 'label:exp_llm1:trig_llm1:exp_llm2:trig_llm2:...' and merge metrics across LLMs.
+    Each LLM's runs are pooled into a single run list so existing stat functions
+    (mean ± std over runs) naturally average across LLMs.
+
+    Returns (label, merged_exposure_list, merged_trigger_list) or None on error.
+    Requires all LLMs to have the same n_trigger per run and n_exposure rounds.
+    """
+    parts = series_str.split(":")
+    if len(parts) < 3 or (len(parts) - 1) % 2 != 0:
+        print(f"Invalid avg-LLM series (expected label:exp1:trig1[:exp2:trig2...]): {series_str}")
+        return None
+    label = parts[0].strip()
+    path_pairs = list(zip(parts[1::2], parts[2::2]))
+
+    merged_exp: List = []
+    merged_trig: List = []
+    for exp_path, trig_path in path_pairs:
+        exp_path, trig_path = exp_path.strip(), trig_path.strip()
+        exp_metrics, _ = load_metrics_from_json(exp_path)
+        trig_metrics, _ = load_metrics_from_json(trig_path)
+        if not exp_metrics:
+            print(f"Warning: empty exposure metrics in {exp_path}, skipping")
+            continue
+        if not trig_metrics:
+            print(f"Warning: empty trigger metrics in {trig_path}, skipping")
+            continue
+        n_runs = len(trig_metrics)
+        merged_exp.extend([exp_metrics] * n_runs)
+        merged_trig.extend(trig_metrics)
+        print(f"  [{label}] loaded {n_runs} runs from {exp_path.split('/')[-1]}")
+
+    if not merged_trig:
+        print(f"Error: no valid data for label '{label}'")
+        return None
+    return (label, merged_exp, merged_trig)
+
+
+def plot_avg_llm_sw_comparison(
+    series_strs: List[str],
+    save_dir: str,
+    filename_prefix: str = "avg_llm_sliding_window",
+) -> None:
+    """
+    Average sliding-window results across all LLMs and plot ASR + retention.
+    Each entry in series_strs has format 'label:exp_llm1:trig_llm1:exp_llm2:trig_llm2:...'.
+    """
+    series = []
+    for s in series_strs:
+        result = _load_and_merge_llm_series(s)
+        if result is not None:
+            series.append(result)
+    if not series:
+        print("Error: no valid series for avg-LLM sliding window plot.")
+        return
+    plot_sliding_window_asr_and_retention(series, save_dir=save_dir, filename_prefix=filename_prefix)
+    print("✅ Avg-LLM sliding window plots generated successfully")
+
+
+def plot_avg_llm_rag_comparison(
+    series_strs: List[str],
+    save_dir: str,
+    filename_prefix: str = "avg_llm_rag",
+) -> None:
+    """
+    Average RAG results across all LLMs and plot ASR + recall + payload count.
+    Each entry in series_strs has format 'label:exp_llm1:trig_llm1:exp_llm2:trig_llm2:...'.
+    """
+    series = []
+    for s in series_strs:
+        result = _load_and_merge_llm_series(s)
+        if result is not None:
+            series.append(result)
+    if not series:
+        print("Error: no valid series for avg-LLM RAG plot.")
+        return
+    plot_rag_asr_and_retention(series, save_dir=save_dir, filename_prefix=filename_prefix)
+    print("✅ Avg-LLM RAG plots generated successfully")
+
+
 def plot_all_from_directory(save_dir: str, model_name: Optional[str] = None) -> None:
     """
     Convenience function to plot all metrics found in a directory.
@@ -461,9 +544,38 @@ Examples:
                        help="Sliding Window: 'DefenseName:exposure_path:trigger_path' (same format, SW trigger metrics)")
     parser.add_argument("--defense_save_dir", type=str,
                        help="Directory to save defense ASR grouped bar chart(s)")
+
+    # Option 7: Average across LLMs — Sliding Window
+    parser.add_argument("--avg_llm_sw_series", type=str, action="append",
+                       help="Avg-LLM SW: 'label:exp_llm1:trig_llm1:exp_llm2:trig_llm2:...' (repeat for each method)")
+    parser.add_argument("--avg_llm_sw_save_dir", type=str,
+                       help="Directory to save avg-LLM sliding window plots")
+
+    # Option 8: Average across LLMs — RAG
+    parser.add_argument("--avg_llm_rag_series", type=str, action="append",
+                       help="Avg-LLM RAG: 'label:exp_llm1:trig_llm1:exp_llm2:trig_llm2:...' (repeat for each method)")
+    parser.add_argument("--avg_llm_rag_save_dir", type=str,
+                       help="Directory to save avg-LLM RAG plots")
     
     args = parser.parse_args()
     
+    # Parse avg-LLM sliding window comparison
+    if getattr(args, "avg_llm_sw_series", None) and args.avg_llm_sw_save_dir:
+        print("\n" + "="*60)
+        print("Avg-LLM Sliding Window Comparison")
+        print("="*60)
+        plot_avg_llm_sw_comparison(args.avg_llm_sw_series, save_dir=args.avg_llm_sw_save_dir)
+        if not getattr(args, "avg_llm_rag_series", None):
+            return
+
+    # Parse avg-LLM RAG comparison
+    if getattr(args, "avg_llm_rag_series", None) and args.avg_llm_rag_save_dir:
+        print("\n" + "="*60)
+        print("Avg-LLM RAG Comparison")
+        print("="*60)
+        plot_avg_llm_rag_comparison(args.avg_llm_rag_series, save_dir=args.avg_llm_rag_save_dir)
+        return
+
     # Parse RAG evolution comparison (exactly 3 series; trigger session only)
     if getattr(args, "evolution_series", None) and args.evolution_save_dir:
         ev_specs = []

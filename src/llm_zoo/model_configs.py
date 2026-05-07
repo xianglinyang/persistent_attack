@@ -98,9 +98,11 @@ _MODEL_CONTEXT_LENGTHS = [
     # GLM
     ("glm-4",                131072),
     ("glm",                  32768),
+    # minimax
+
 ]
 
-_DEFAULT_CONTEXT_LENGTH = 32768  # safe fallback for unknown models
+_DEFAULT_CONTEXT_LENGTH = 150000  # safe fallback for unknown models
 
 
 def get_context_length(model_name: str) -> int:

@@ -30,7 +30,7 @@ PAGES: Dict[str, PageConfig] = {
     "telemedicine": PageConfig(
         page_id="telemedicine",
         reload_url="support.telemed-portal.com/help/scheduling-fix",
-        search_keyword="telemedicine scheduling",
+        search_keyword="telemedicine",
         content_file=_PAGES_DIR / "telemedicine.txt",
         search_title="Telemedicine Scheduling Troubleshooting — Common Issues & Fixes",
         search_snippet="Step-by-step reference for resolving scheduling errors in telemedicine agent workflows...",
