@@ -126,6 +126,7 @@ openrouter_models = [
     "qwen/qwen3-235b-a22b",
     "qwen/qwen3-235b-a22b-2507",
     "qwen/qwen3-235b-a22b-thinking-2507",
+    "qwen/qwen3.5-35b-a3b",
     # 3.0
     "qwen/qwen3-max",
     "qwen/qwen3-30b-a3b-instruct-2507",
@@ -147,7 +148,8 @@ openrouter_models = [
     # X-AI
     "x-ai/grok-4",
     "z-ai/glm-4.7-flash",
-    "moonshotai/kimi-k2.5"
+    "moonshotai/kimi-k2.5",
+    "minimax/minimax-m2.5"
 ]
 
 dashscope_models = [
@@ -315,6 +317,7 @@ implementation_to_name = {
     "qwen/qwen3-235b-a22b-2507": "qwen3-235b-a22b-2507",
     "qwen/qwen3-30b-a3b-instruct-2507": "qwen3-30b-a3b-instruct-2507",
     "qwen/qwen3-8b": "qwen3-8b",
+    "qwen/qwen3.5-35b-a3b": "qwen3.5-35b-a3b",
 
     # OpenRouter Meta Llama models
     "meta-llama/llama-4-scout": "llama-4-scout",
@@ -350,12 +353,14 @@ implementation_to_name = {
     "qwq-plus": "qwq-plus",
     "qwq-32b": "qwq-32b",
 
+
     # OpenRouter X-AI models
     "x-ai/grok-4": "grok-4",
 
     # OpenRouter Z-AI models
     "z-ai/glm-4.7-flash": "glm-4.7-flash",
     "moonshotai/kimi-k2.5": "kimi-k2.5",
+    "minimax/minimax-m2.5": "minimax-m2.5",
 }
 
 def is_huggingface_model(model_name: str) -> bool:
