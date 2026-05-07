@@ -313,15 +313,22 @@ def plot_rag_asr_and_retention(
     for idx, (label, exp_list, trig_list) in enumerate(series):
         stats = _compute_rag_stats(exp_list, trig_list)
         n_trigger = len(trig_list[0])
-        # Exposure phase: use first run (exposure is same across runs)
-        exposure_metrics = exp_list[0]
-        exposure_rounds = np.arange(1, len(exposure_metrics) + 1)
-        exposure_payload = np.array([m.get("rag_payload_count", 0) for m in exposure_metrics])
+        # Exposure phase: mean ± std across all runs (handles avg-LLM case)
+        exposure_payloads = [
+            [m.get("rag_payload_count", 0) for m in exp_metrics]
+            for exp_metrics in exp_list
+        ]
+        n_exposure = min(len(p) for p in exposure_payloads)
+        exposure_payload_all = np.array([p[:n_exposure] for p in exposure_payloads])
+        exposure_rounds = np.arange(1, n_exposure + 1)
+        exposure_payload_mean = np.mean(exposure_payload_all, axis=0)
+        exposure_payload_std = np.std(exposure_payload_all, axis=0)
         # Trigger phase: mean ± std
-        trigger_rounds_global = np.arange(len(exposure_metrics) + 1, len(exposure_metrics) + n_trigger + 1)
+        trigger_rounds_global = np.arange(n_exposure + 1, n_exposure + n_trigger + 1)
         payload_mean, payload_std = stats[11], stats[12]
         c = colors[idx % len(colors)]
-        ax_payload.plot(exposure_rounds, exposure_payload, "o-", color=c, linewidth=2, markersize=5, label=label)
+        ax_payload.plot(exposure_rounds, exposure_payload_mean, "o-", color=c, linewidth=2, markersize=5, label=label)
+        ax_payload.fill_between(exposure_rounds, exposure_payload_mean - exposure_payload_std, exposure_payload_mean + exposure_payload_std, color=c, alpha=0.2)
         ax_payload.plot(trigger_rounds_global, payload_mean, "s-", color=c, linewidth=2, markersize=5)
         ax_payload.fill_between(trigger_rounds_global, payload_mean - payload_std, payload_mean + payload_std, color=c, alpha=0.2)
     ax_payload.axvline(x=n_exposure_ref, color="gray", linestyle="--", linewidth=1.5, alpha=0.7, label="Phase transition")
