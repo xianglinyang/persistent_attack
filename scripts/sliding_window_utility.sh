@@ -8,21 +8,21 @@
 # ABBR="gemini"
 # MODEL_NAME="deepseek/deepseek-v3.2"
 # ABBR="ds"
-MODEL_NAME="meta-llama/llama-3.3-70b-instruct"
-ABBR="llama"
-# MODEL_NAME="qwen/qwen3-235b-a22b"
-# ABBR="qwen"
+# MODEL_NAME="meta-llama/llama-3.3-70b-instruct"
+# ABBR="llama"
+MODEL_NAME="qwen/qwen3-235b-a22b"
+ABBR="qwen"
 
 ATTACK_TYPE="completion_real"
 METHOD_NAME="zombie"
 DATASET_NAME_OR_PATH="data-for-agents/insta-150k-v1"
 
 TRIGGER_ROUNDS=1
-TRIGGER_RUNS=50
+TRIGGER_RUNS=20
 WINDOW_SIZE=50
 MAX_STEPS=15
 MOCK_TOPIC=1
-JUDGE_MODEL_NAME="openai/gpt-5-mini"
+JUDGE_MODEL_NAME="openai/gpt-5-nano"
 DETECTION_GUARD_MODEL_NAME="openai/gpt-4.1-nano"
 
 python -m src.evaluate.sliding_window.run_attack \
