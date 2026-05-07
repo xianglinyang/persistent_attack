@@ -186,6 +186,8 @@ def main_sliding_window_agent_attack(
     max_steps: int = 10,
     detection_guard: bool = False,
     detection_guard_model_name: str = None,
+    cleaner_guard: bool = False,
+    cleaner_guard_model_name: str = "openai/gpt-5-nano",
     instruction_guard_name: str = "raw",
     progent_guard: bool = False,
     progent_guard_mode: str = "static",
@@ -225,6 +227,9 @@ def main_sliding_window_agent_attack(
     logger.info(f"Detection guard Enabled: {detection_guard}")
     if detection_guard:
         logger.info(f"Detection guard model: {detection_guard_model_name}")
+    logger.info(f"Cleaner guard Enabled: {cleaner_guard}")
+    if cleaner_guard:
+        logger.info(f"Cleaner guard model: {cleaner_guard_model_name}")
     logger.info(f"Instruction guard name: {instruction_guard_name}")
     logger.info(f"Progent guard Enabled: {progent_guard}")
     if progent_guard:
@@ -273,6 +278,8 @@ def main_sliding_window_agent_attack(
         max_steps=max_steps,
         detection_guard=detection_guard,
         detection_guard_model_name=detection_guard_model_name,
+        cleaner_guard=cleaner_guard,
+        cleaner_guard_model_name=cleaner_guard_model_name,
         instruction_guard_name=instruction_guard_name,
         progent_guard=progent_guard,
         progent_guard_mode=progent_guard_mode,
@@ -303,6 +310,8 @@ def main_sliding_window_agent_attack(
             max_steps=max_steps,
             detection_guard=detection_guard,
             detection_guard_model_name=detection_guard_model_name,
+            cleaner_guard=cleaner_guard,
+            cleaner_guard_model_name=cleaner_guard_model_name,
             instruction_guard_name=instruction_guard_name,
             progent_guard=progent_guard,
             progent_guard_mode=progent_guard_mode,
@@ -340,7 +349,9 @@ def main_sliding_window_agent_attack(
 
     os.makedirs(save_dir, exist_ok=True)
     _guard_suffix = ""
-    if progent_guard:
+    if cleaner_guard:
+        _guard_suffix = "_cleaner_" + (cleaner_guard_model_name or "default").replace("/", "_")
+    elif progent_guard:
         _guard_suffix = "_progent_" + (progent_model_name or "default").replace("/", "_")
     elif drift_guard:
         _guard_suffix = "_drift_" + (drift_guard_llm_name or "default").replace("/", "_")
@@ -373,6 +384,8 @@ if __name__ == "__main__":
     parser.add_argument("--max_steps", type=int, default=10)
     parser.add_argument("--detection_guard", type=int, default=0)
     parser.add_argument("--detection_guard_model_name", type=str, default="openai/gpt-4.1-nano")
+    parser.add_argument("--cleaner_guard", type=int, default=0, help="Enable LLMGuard CleanWrapper (0/1)")
+    parser.add_argument("--cleaner_guard_model_name", type=str, default="openai/gpt-5-nano", help="LLM for CleanWrapper injection detection")
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
     parser.add_argument("--progent_guard", type=int, default=0, help="Enable Progent tool-level privilege control (0/1)")
     parser.add_argument("--progent_guard_mode", type=str, default="static", choices=["static", "dynamic"], help="Progent policy mode: static (fixed) or dynamic (LLM-generated per task)")
@@ -389,6 +402,9 @@ if __name__ == "__main__":
     parser.add_argument("--page_type", type=str, default="telemedicine", choices=list(PAGES.keys()),
                         help="Attack page topic to use (default: telemedicine)")
     parser.add_argument("--num_repeat", type=int, default=1, help="Number of times to repeat the zombie payload (default: 1)")
+    parser.add_argument("--command_type", type=str, default="basic1",
+                        choices=["baseline", "basic1", "basic2", "basic3", "basic4", "cleaner", "chinese", "spanish"],
+                        help="Which injection command template to use (default: basic1)")
     args = parser.parse_args()
 
     setup_logging(task_name=f"sliding_window_attack_{args.model_name.replace('/', '_')}")
@@ -409,7 +425,7 @@ if __name__ == "__main__":
     logger.info(f"[Experiment] Mock topic (include mock_topics): {args.mock_topic}")
     
     # Prepare malicious payload (will use global payload_dir)
-    prepare_malicious_payload(args.method_name, args.attack_type, num_repeat=args.num_repeat)
+    prepare_malicious_payload(args.method_name, args.attack_type, num_repeat=args.num_repeat, command_type=args.command_type)
 
     main_sliding_window_agent_attack(
         model_name=args.model_name,
@@ -423,6 +439,8 @@ if __name__ == "__main__":
         max_steps=args.max_steps,
         detection_guard=args.detection_guard,
         detection_guard_model_name=args.detection_guard_model_name,
+        cleaner_guard=bool(args.cleaner_guard),
+        cleaner_guard_model_name=args.cleaner_guard_model_name,
         instruction_guard_name=args.instruction_guard_name,
         progent_guard=args.progent_guard,
         progent_guard_mode=args.progent_guard_mode,

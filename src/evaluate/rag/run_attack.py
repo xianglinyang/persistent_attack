@@ -325,6 +325,9 @@ def main_rag_agent_exposure_experiment(
     # detection guard knobs
     detection_guard: bool = False,
     detection_guard_model_name: Optional[str] = None,
+    # cleaner guard knobs
+    cleaner_guard: bool = False,
+    cleaner_guard_model_name: str = "openai/gpt-5-nano",
     # instruction guard knobs
     instruction_guard_name: str = "raw",
     # progent guard knobs
@@ -459,6 +462,7 @@ def main_rag_agent_exposure_experiment(
     agent = RAGWebAgent(
         llm=llm, memory=memory, max_steps=max_steps,
         detection_guard=detection_guard, detection_guard_model_name=detection_guard_model_name,
+        cleaner_guard=cleaner_guard, cleaner_guard_model_name=cleaner_guard_model_name,
         instruction_guard_name=instruction_guard_name,
         progent_guard=progent_guard, progent_guard_mode=progent_guard_mode, progent_model_name=progent_model_name,
         drift_guard=drift_guard, drift_guard_llm_name=drift_guard_llm_name,
@@ -515,6 +519,8 @@ def main_rag_agent_trigger_experiment(
     # guard knobs
     detection_guard: bool = False,
     detection_guard_model_name: Optional[str] = None,
+    cleaner_guard: bool = False,
+    cleaner_guard_model_name: str = "openai/gpt-5-nano",
     instruction_guard_name: str = "raw",
     progent_guard: bool = False,
     progent_guard_mode: str = "static",
@@ -579,6 +585,7 @@ def main_rag_agent_trigger_experiment(
     agent = RAGWebAgent(
         llm=llm, memory=memory, max_steps=max_steps,
         detection_guard=detection_guard, detection_guard_model_name=detection_guard_model_name,
+        cleaner_guard=cleaner_guard, cleaner_guard_model_name=cleaner_guard_model_name,
         instruction_guard_name=instruction_guard_name,
         progent_guard=progent_guard, progent_guard_mode=progent_guard_mode, progent_model_name=progent_model_name,
         drift_guard=drift_guard, drift_guard_llm_name=drift_guard_llm_name,
@@ -663,6 +670,8 @@ def main():
     parser.add_argument("--strict_cmd_asr", type=int, default=0)
     parser.add_argument("--detection_guard", type=int, default=0)
     parser.add_argument("--detection_guard_model_name", type=str, default=None)
+    parser.add_argument("--cleaner_guard", type=int, default=0, help="Enable LLMGuard CleanWrapper (0/1)")
+    parser.add_argument("--cleaner_guard_model_name", type=str, default="openai/gpt-5-nano", help="LLM for CleanWrapper injection detection")
     parser.add_argument("--instruction_guard_name", type=str, default="raw")
     parser.add_argument("--progent_guard", type=int, default=0)
     parser.add_argument("--progent_guard_mode", type=str, default="static", choices=["static", "dynamic"])
@@ -680,6 +689,9 @@ def main():
     parser.add_argument("--page_type", type=str, default="telemedicine", choices=list(PAGES.keys()),
                         help="Attack page topic to use (default: telemedicine)")
     parser.add_argument("--num_repeat", type=int, default=1, help="Number of times to repeat the zombie payload (default: 1)")
+    parser.add_argument("--command_type", type=str, default="basic1",
+                        choices=["baseline", "basic1", "basic2", "basic3", "basic4", "cleaner", "chinese", "spanish"],
+                        help="Which injection command template to use (default: basic1)")
     args = parser.parse_args()
 
     setup_logging(task_name=f"rag_attack_{args.phase}")
@@ -700,7 +712,7 @@ def main():
     logger.info(f"[Experiment] Mock topic (include mock_topics): {args.mock_topic}")
     
     # Prepare malicious payload (will use global payload_dir)
-    prepare_malicious_payload(args.method_name, args.attack_type, num_repeat=args.num_repeat)
+    prepare_malicious_payload(args.method_name, args.attack_type, num_repeat=args.num_repeat, command_type=args.command_type)
 
     # -----------------------
     # Run based on phase selection
@@ -748,6 +760,8 @@ def main():
             strict_cmd_asr=bool(args.strict_cmd_asr),
             detection_guard=bool(args.detection_guard),
             detection_guard_model_name=args.detection_guard_model_name,
+            cleaner_guard=bool(args.cleaner_guard),
+            cleaner_guard_model_name=args.cleaner_guard_model_name,
             instruction_guard_name=args.instruction_guard_name,
             progent_guard=bool(args.progent_guard),
             progent_guard_mode=args.progent_guard_mode,
@@ -800,6 +814,8 @@ def main():
             strict_cmd_asr=bool(args.strict_cmd_asr),
             detection_guard=bool(args.detection_guard),
             detection_guard_model_name=args.detection_guard_model_name,
+            cleaner_guard=bool(args.cleaner_guard),
+            cleaner_guard_model_name=args.cleaner_guard_model_name,
             instruction_guard_name=args.instruction_guard_name,
             progent_guard=bool(args.progent_guard),
             progent_guard_mode=args.progent_guard_mode,
@@ -811,7 +827,7 @@ def main():
             drift_injection_isolation=bool(args.drift_injection_isolation),
             judge_model_name=args.judge_model_name,
         )
-        
+
         logger.info(f"\n✅ Trigger phase complete!")
         if trigger_metrics:
             total_triggers = sum(len(batch) for batch in trigger_metrics)
