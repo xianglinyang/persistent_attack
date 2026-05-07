@@ -69,16 +69,16 @@ def generate_injections(attack_type: str, injected_prompt: str):
     return injected_prompt
 
 
-def generate_ipi_injections(attack_type: str):
+def generate_ipi_injections(attack_type: str, command_type: str = "baseline"):
     cmds = _page_commands()
-    attack_ins = create_attack_instance(attack_type, injected_prompt=cmds["baseline"])
+    attack_ins = create_attack_instance(attack_type, injected_prompt=cmds[command_type])
     injected_prompt = attack_ins._get_completion_suffix()
     return injected_prompt
 
 
-def generate_zombie_injections(attack_type: str, num_repeat: int = 1):
+def generate_zombie_injections(attack_type: str, num_repeat: int = 1, command_type: str = "basic1"):
     cmds = _page_commands()
-    attack_ins = create_attack_instance(attack_type, injected_prompt=cmds["basic1"])
+    attack_ins = create_attack_instance(attack_type, injected_prompt=cmds[command_type])
     injected_prompt = attack_ins._get_completion_suffix()
     return injected_prompt * num_repeat
 

@@ -224,22 +224,29 @@ def reset_malicious_payload_dir(payload_dir: Path = None):
     logger.info(f"[Payload] Reset malicious payload directory: {payload_dir}")
 
 
-def prepare_malicious_payload(method_name: str, attack_type: str, num_repeat: int = 1) -> None:
+def prepare_malicious_payload(
+    method_name: str,
+    attack_type: str,
+    num_repeat: int = 1,
+    command_type: str = "basic1",
+) -> None:
     """
     Reset the malicious payload directory and write initial payload.
     Uses global config for payload_dir (set via set_payload_dir()).
-    
+
     Args:
-        method_name: Attack method name (dpi, ipi, zombie)
-        attack_type: Attack type (completion_real, etc.)
+        method_name:  Attack method name (dpi, ipi, zombie)
+        attack_type:  Attack type (completion_real, etc.)
+        num_repeat:   Number of times to repeat the zombie payload
+        command_type: Which command template to use (baseline, basic1–basic4, cleaner, …)
     """
     reset_malicious_payload_dir()
     if method_name == "dpi":
         payload = ""
     elif method_name == "ipi":
-        payload = generate_ipi_injections(attack_type)
+        payload = generate_ipi_injections(attack_type, command_type=command_type)
     elif method_name == "zombie":
-        payload = generate_zombie_injections(attack_type, num_repeat=num_repeat)
+        payload = generate_zombie_injections(attack_type, num_repeat=num_repeat, command_type=command_type)
     else:
         raise ValueError(f"Unknown method_name: {method_name}")
     write_malicious_payload(payload)
