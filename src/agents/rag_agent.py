@@ -216,6 +216,8 @@ class RAGWebAgent(WebAgentBase):
         instruction_guard_name: str = "raw",
         detection_guard: bool = False,
         detection_guard_model_name: Optional[str] = None,
+        cleaner_guard: bool = False,
+        cleaner_guard_model_name: str = "openai/gpt-5-nano",
         progent_guard: bool = False,
         progent_guard_mode: str = "static",
         progent_model_name: Optional[str] = None,
@@ -231,6 +233,8 @@ class RAGWebAgent(WebAgentBase):
         self.instruction_guard_name = instruction_guard_name
         self.detection_guard_enabled = detection_guard
         self.detection_guard_model_name = detection_guard_model_name
+        self.cleaner_guard_enabled = cleaner_guard
+        self.cleaner_guard_model_name = cleaner_guard_model_name
 
         # Context budget (same logic as SlidingWindowWebAgent)
         ctx = get_context_length(llm.model_name)
@@ -380,6 +384,24 @@ class RAGWebAgent(WebAgentBase):
         
         return guard_decision
 
+    def _clean_web_content(self, text: str) -> str:
+        """Clean web content by detecting and removing injected instructions.
+
+        Uses the LLMGuard CleanWrapper: detect() finds injection phrases via LLM,
+        remove() strips them with a whitespace-tolerant regex.
+        Returns the cleaned text (original if nothing detected).
+        """
+        from src.guard.detection_based.LLMGuard.cleaner_wrapper import detect, remove
+        phrases = detect(text, self.cleaner_guard_model_name)
+        if phrases:
+            cleaned = remove(text, phrases)
+            logger.info(f"[CLEANER] Removed {len(phrases)} injection phrase(s): {phrases}")
+            logger.info(f"[CLEANER] Content length: {len(text)} → {len(cleaned)}")
+            return cleaned
+        logger.info("[CLEANER] No injection detected, content passed through.")
+        return text
+
+
     def run_task(
         self,
         user_goal: str,
@@ -528,6 +550,10 @@ class RAGWebAgent(WebAgentBase):
                     if self.drift_guard_enabled and self.drift_guard is not None:
                         _, result_str = self.drift_guard.isolate_injection(result_str)
                         self.drift_guard.record_tool_call(action_name)
+
+                    # ---- Cleaner Guard: clean web content before it enters memory ----
+                    if self.cleaner_guard_enabled and action_name in ("search", "read"):
+                        result_str = self._clean_web_content(result_str)
 
                     # ---- Guard Check: Tool Result (especially web content) ----
                     if self.detection_guard_enabled:
